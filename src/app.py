@@ -11,7 +11,7 @@ import json
 alt.data_transformers.enable("vegafusion")
 
 # ===== 1. Process BC GeoJSON Data =====
-gdf = gpd.read_file("data/raw/geojson/lcsd000b21a_e_simplified_1percent.geojson")
+gdf = gpd.read_file("data/raw/geojson/lcsd000b21a_e_simplified_0.25percent.geojson")
 columns_to_keep = ['DGUID', 'CSDUID', 'CSDNAME', 'geometry']
 gdf = gdf[gdf['DGUID'].astype(str).str.startswith("2021A000559")][columns_to_keep]
 gdf.crs = "EPSG:3347"
@@ -40,7 +40,7 @@ regions = {
 }
 
 # ===== 2. Prepare Immigration Data =====
-df = pd.read_csv("data/raw/immigration_data/immigration_stats_bc_census_subdivisions.csv")
+df = pd.read_parquet("data/processed/immigration_data/immigration_stats_bc_census_subdivisions.parquet")
 df_immi = df[(df["Age (8D)"] == "Total - Age") & (df["Gender (3)"] == "Total - Gender")]
 df_immi = df_immi[["GEO", "DGUID", "Place of birth (290)",
                     "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]"]]
@@ -55,10 +55,11 @@ df_immi["Count"] = pd.to_numeric(df_immi["Count"], errors='coerce')
 default_dguid = [df_immi["DGUID"].iloc[0]]
 
 # Load World Map for Immigrants' Birthplaces
-world_countries = gpd.read_file("https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip")
-world_countries = world_countries.query(
-    'CONTINENT != "Antarctica"'
-)[['NAME_CIAWF', 'geometry']]
+world_countries = gpd.read_file("data/processed/geojson/world_countries_clean.geojson")
+# print(world_countries)
+# world_countries = world_countries.query(
+    # 'CONTINENT != "Antarctica"'
+# )[['ADMIN', 'geometry']]
 
 # ===== 3. Create Function to Build BC Map Chart with Zoom =====
 def create_bc_map(region_filter):
@@ -111,7 +112,7 @@ def create_world_chart(selected_dguid):
     df_filtered = df_immi[df_immi["DGUID"].isin(selected_dguid)]
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
 
-    merged = world_countries.merge(df_agg, left_on="NAME_CIAWF", right_on="Birthplace", how="left")
+    merged = world_countries.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     merged["Count"] = merged["Count"].fillna(0)
 
     merged_geojson = json.loads(merged.to_json())
@@ -121,7 +122,7 @@ def create_world_chart(selected_dguid):
     ).encode(
         color=alt.Color("properties.Count:Q", scale=alt.Scale(scheme='orangered')),
         tooltip=[
-            alt.Tooltip("properties.NAME_CIAWF:N", title="Country"),
+            alt.Tooltip("properties.ADMIN:N", title="Country"),
             alt.Tooltip("properties.Count:Q", title="Immigrant Count")
         ]
     # ).project(
