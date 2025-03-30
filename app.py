@@ -56,7 +56,9 @@ style = dict(weight=1, opacity=1, color='black', dashArray='3', fillOpacity=0.7)
 def get_world_geojson(selected_dguid):
     df_filtered = df_immi[df_immi["DGUID"]==selected_dguid]
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
-    total_count = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"].values[0]
+    match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
+    total_count = match.values[0] if not match.empty else 0
+
 
     # Calculate percentage
     df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
