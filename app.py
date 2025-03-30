@@ -9,7 +9,7 @@ from dash_extensions.javascript import arrow_function, assign
 
 # === Load & Clean BC GeoJSON ===
 gdf_bc = gpd.read_file("data/raw/geojson/lcsd000b21a_e_simplified_0.25percent.geojson")
-gdf_bc = gdf_bc[gdf_bc['DGUID'].astype(str).str.startswith("2021A000559")]
+# gdf_bc = gdf_bc[gdf_bc['DGUID'].astype(str).str.startswith("2021A000559")]
 gdf_bc.crs = "EPSG:3347"
 gdf_bc = gdf_bc.to_crs(epsg=4326)
 gdf_bc["geometry"] = gdf_bc["geometry"].buffer(0)
@@ -18,7 +18,7 @@ bc_geojson = json.loads(gdf_bc.to_json())
 print(gdf_bc.columns)
 
 # === Load & Clean Immigration Data ===
-df = pd.read_parquet("data/processed/immigration_data/immigration_stats_bc_census_subdivisions.parquet")
+df = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_subdivisions.parquet")
 df_immi = df[(df["Age (8D)"] == "Total - Age") & (df["Gender (3)"] == "Total - Gender")]
 df_immi = df_immi[["GEO", "DGUID", "Place of birth (290)",
                    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]"]]
@@ -35,7 +35,6 @@ world_gdf = gpd.read_file("data/processed/geojson/world_countries_clean.geojson"
 world_gdf["geometry"] = world_gdf["geometry"].buffer(0)
 
 # === World Style Function ===
-# Class breaks for immigrant counts
 classes = [0, 0.1, 0.5, 1, 2, 5, 10]
 colorscale = ['#FFEDA0', '#FED976', '#FEB24C', '#FD8D3C', '#FC4E2A', '#BD0026', '#800026']
 
@@ -57,7 +56,6 @@ style = dict(weight=1, opacity=1, color='black', dashArray='3', fillOpacity=0.7)
 def get_world_geojson(selected_dguid):
     df_filtered = df_immi[df_immi["DGUID"]==selected_dguid]
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
-    print(df_agg)
     total_count = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"].values[0]
 
     # Calculate percentage
