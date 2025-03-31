@@ -11,12 +11,21 @@ import altair as alt
 
 # === Load & Clean Canada GeoJSON ===
 gdf_csd = gpd.read_file("data/raw/geojson/lcsd000b21a_e_simplified_0.25percent.geojson")
-# gdf_bc = gdf_bc[gdf_bc['DGUID'].astype(str).str.startswith("2021A000559")]
 gdf_csd.crs = "EPSG:3347"
 gdf_csd = gdf_csd.to_crs(epsg=4326)
 gdf_csd["geometry"] = gdf_csd["geometry"].buffer(0)
 gdf_csd = gdf_csd[~gdf_csd.geometry.is_empty & gdf_csd.geometry.notnull()].copy()
-csd_geojson = json.loads(gdf_csd.to_json())
+gdf_csd.rename(columns={"CSDNAME": "NAME"}, inplace=True)
+csd_geojson=json.loads(gdf_csd.to_json())
+
+gdf_cd = gpd.read_file("data/raw/geojson/lcd_000b21a_e_simplified_0.5percent.geojson")
+gdf_cd.crs = "EPSG:3347"
+gdf_cd = gdf_cd.to_crs(epsg=4326)
+gdf_cd["geometry"] = gdf_cd["geometry"].buffer(0)
+gdf_cd = gdf_cd[~gdf_cd.geometry.is_empty & gdf_cd.geometry.notnull()].copy()
+gdf_cd.rename(columns={"CDNAME": "NAME"}, inplace=True)
+
+
 
 
 
@@ -31,6 +40,22 @@ df_immi.rename(columns={
 }, inplace=True)
 df_immi["Count"] = pd.to_numeric(df_immi["Count"], errors='coerce')
 df_immi = df_immi.dropna(subset=["Count"])
+
+df_cd = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_divisions.parquet")
+df_cd = df_cd[(df_cd["Age (8D)"] == "Total - Age") & (df_cd["Gender (3)"] == "Total - Gender")]
+df_cd = df_cd[["GEO", "DGUID", "Place of birth (290)",
+               "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]", "Province", "Type"]]
+
+df_cd.rename(columns={
+    "Place of birth (290)": "Birthplace",
+    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Count"
+}, inplace=True)
+
+df_cd["Count"] = pd.to_numeric(df_cd["Count"], errors="coerce")
+df_cd = df_cd.dropna(subset=["Count"])
+
+
+
 default_dguid = "ALL"
 
 # === Load & Clean World Countries GeoJSON ===
@@ -108,8 +133,8 @@ def get_csd_geojson(selected_country):
 
     # Tooltip display
     merged["tooltip"] = merged.apply(
-        lambda row: f"{row['CSDNAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)" 
-        if pd.notna(row['CountryCount']) else f"{row['CSDNAME']}: 0 immigrants (0%)",
+        lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)" 
+        if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)",
         axis=1
     )
 
@@ -128,6 +153,17 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_i
 app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
+            html.Label("Select administrative level:"),
+            dcc.Dropdown(
+                id="admin-level",
+                options=[
+                    {"label": "Census Subdivision (CSD)", "value": "CSD"},
+                    {"label": "Census Division (CD)", "value": "CD"},
+                ],
+                value="CSD",
+                clearable=False,
+                style={"marginBottom": "10px", "width": "300px"}
+            ),
             html.H4("Canada Subdivisions Map", id="canada-map-title"),
             dl.Map([
                 dl.TileLayer(),
@@ -148,6 +184,7 @@ app.layout = dbc.Container([
                 id="csd-pie-grouping",
                 options=[
                     {"label": "CSD", "value": "CSD"},
+                    {"label": "CD", "value": "CD"},
                     {"label": "Province", "value": "Province"}
                 ],
                 value="CSD",
@@ -178,11 +215,13 @@ app.layout = dbc.Container([
             dcc.Dropdown(
                 id="pie-grouping",
                 options=[
+                    {"label": "Country (including Canada)", "value": "Country (including Canada)"},
+                    {"label": "Country (excluding Canada)", "value": "Country (excluding Canada)"},
                     {"label": "Continent", "value": "Continent"},
                     {"label": "Region", "value": "Region"},
-                    {"label": "Country", "value": "Country"},
+                    {"label": "Inside Canada (Provinces)", "value": "Inside Canada (Provinces)"}
                 ],
-                value="Country",  # default view
+                value="Country (including Canada)",
                 clearable=False,
                 style={"marginBottom": "10px"}
             ),
@@ -191,23 +230,108 @@ app.layout = dbc.Container([
     ]),
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
+    dcc.Store(id="admin-level-store", data="CSD"),
     html.Div(id="selected-region")
 ], fluid=True)
 
+@callback(
+    Output("admin-level-store", "data"),
+    Input("admin-level", "value")
+)
+def sync_admin_level_to_store(val):
+    return val
 
 @callback(
     Output("csd-geojson", "data"),
-    Input("selected-country", "data")
+    Input("selected-country", "data"),
+    Input("admin-level", "value")
 )
-def update_csd_geojson(selected_country):
-    return get_csd_geojson(selected_country)
+def update_subdivision_geojson(selected_country, admin_level):
+    if admin_level == "CSD":
+        # Existing logic for CSD level
+        if not selected_country:
+            return json.loads(gdf_csd.to_json())
+
+        df_total = df_immi[df_immi["Birthplace"] == "Total – Place of birth"]
+        df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
+
+        df_country = df_immi[df_immi["Birthplace"] == selected_country]
+        df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
+
+        df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
+        df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
+        df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
+
+        merged = gdf_csd.merge(df_merged, on="DGUID", how="left")
+        merged["Percentage"] = merged["Percentage"].fillna(0)
+        merged["tooltip"] = merged.apply(
+            lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
+            if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1)
+
+        return json.loads(merged.to_json())
+
+    elif admin_level == "CD":
+        # New logic for CD level
+        if not selected_country:
+            return json.loads(gdf_cd.to_json())
+
+        df_total = df_cd[df_cd["Birthplace"] == "Total – Place of birth"]
+        df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
+
+        df_country = df_cd[df_cd["Birthplace"] == selected_country]
+        df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
+
+        df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
+        df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
+        df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
+
+        merged = gdf_cd.merge(df_merged, on="DGUID", how="left")
+        merged["Percentage"] = merged["Percentage"].fillna(0)
+        merged["tooltip"] = merged.apply(
+            lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
+            if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1)
+
+        return json.loads(merged.to_json())
+
+    return json.loads(gdf_csd.to_json())  # fallback
+
+# @callback(
+#     Output("csd-geojson", "data"),
+#     Input("selected-country", "data")
+# )
+# def update_csd_geojson(selected_country):
+#     return get_csd_geojson(selected_country)
 
 @callback(
     Output("world-geojson", "data"),
-    Input("selected-dguid", "data")
+    Input("selected-dguid", "data"),
+    Input("admin-level-store", "data")
 )
-def update_world_geojson(selected_dguid):
-    return get_world_geojson(selected_dguid)
+def update_world_geojson(selected_dguid, admin_level):
+    if admin_level == "CD":
+        df_selected = df_cd
+    else:
+        df_selected = df_immi
+
+    if selected_dguid == "ALL":
+        df_filtered = df_selected.copy()
+    else:
+        df_filtered = df_selected[df_selected["DGUID"] == selected_dguid]
+
+    df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
+    match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
+    total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+
+    df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
+
+    merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+    merged["Count"] = merged["Count"].fillna(0)
+    merged["Percentage"] = merged["Percentage"].fillna(0)
+    merged["tooltip"] = merged.apply(
+        lambda row: f"{row['ADMIN']}: {int(row['Count'])} ({row['Percentage']}%)", axis=1
+    )
+
+    return json.loads(merged.to_json())
 
 
 @callback(
@@ -247,7 +371,7 @@ def update_canada_map_title(selected_country):
 )
 def update_world_title(feature):
     if feature:
-        return f"Immigrant Origins for {feature['properties']['CSDNAME']}"
+        return f"Immigrant Origins for {feature['properties']['NAME']}"
     return "Immigrant Origins for All Subdivisions"
 
 
@@ -277,9 +401,10 @@ def collapse_small_slices(df, label_col, count_col="Count", threshold=1):
 @callback(
     Output("origin-pie-chart", "spec"),
     Input("selected-dguid", "data"),
-    Input("pie-grouping", "value")
+    Input("pie-grouping", "value"),
+    Input("admin-level-store", "data")
 )
-def update_pie_chart_altair(selected_dguid, grouping_level):
+def update_world_pie_chart(selected_dguid, grouping_level, admin_level):
     if selected_dguid == "ALL":
         return alt.Chart(pd.DataFrame({
             "label": ["No subdivision selected"],
@@ -289,12 +414,23 @@ def update_pie_chart_altair(selected_dguid, grouping_level):
             color="label:N"
         ).properties(title="Select a subdivision").to_dict(format="vega")
 
-    df_filtered = df_immi[
-        (df_immi["DGUID"] == selected_dguid) &
-        (df_immi["Birthplace"] != "Total – Place of birth")
+    # Select the right dataframe
+    df_selected = df_cd if admin_level == "CD" else df_immi
+
+    df_filtered = df_selected[
+        (df_selected["DGUID"] == selected_dguid) &
+        (df_selected["Birthplace"] != "Total – Place of birth")
     ].copy()
 
-    df_filtered = df_filtered[df_filtered["Type"] == grouping_level]
+    # Filter by grouping type
+    if grouping_level == "Country (including Canada)":
+        df_filtered = df_filtered[df_filtered["Type"].isin(["Country", "Inside Canada"])]
+    elif grouping_level == "Country (excluding Canada)":
+        df_filtered = df_filtered[df_filtered["Type"] == "Country"]
+    elif grouping_level == "Inside Canada (Provinces)":
+        df_filtered = df_filtered[df_filtered["Type"] == "Province"]
+    else:
+        df_filtered = df_filtered[df_filtered["Type"] == grouping_level]
 
     if df_filtered.empty:
         return alt.Chart(pd.DataFrame({
@@ -305,6 +441,7 @@ def update_pie_chart_altair(selected_dguid, grouping_level):
             color="label:N"
         ).properties(title="No data").to_dict(format="vega")
 
+    # Aggregate and simplify
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
     df_agg = collapse_small_slices(df_agg, label_col="Birthplace")
 
@@ -317,6 +454,7 @@ def update_pie_chart_altair(selected_dguid, grouping_level):
     )
 
     return chart.to_dict(format="vega")
+
 
 
 
@@ -335,15 +473,37 @@ def update_csd_pie_chart(selected_country, grouping_level):
             color="label:N"
         ).properties(title="Select a country on the world map").to_dict(format="vega")
 
-    df_country = df_immi[df_immi["Birthplace"] == selected_country].copy()
-    df_merged = df_country.merge(gdf_csd[["DGUID", "CSDNAME"]], on="DGUID", how="left")
-
-    if grouping_level == "Province":
-        df_grouped = df_merged.groupby("Province", as_index=False)["Count"].sum()
-        df_grouped.rename(columns={"Province": "Label"}, inplace=True)
+    # Use both dataframes depending on grouping
+    if grouping_level == "CSD":
+        df_selected = df_immi
+        gdf_selected = gdf_csd
+        name_col = "NAME"
+    elif grouping_level == "CD":
+        df_selected = df_cd
+        gdf_selected = gdf_cd
+        name_col = "NAME"
+    elif grouping_level == "Province":
+        df_selected = df_immi  # can use either
+        name_col = "Province"
+        gdf_selected = None
     else:
-        df_grouped = df_merged.groupby("CSDNAME", as_index=False)["Count"].sum()
-        df_grouped.rename(columns={"CSDNAME": "Label"}, inplace=True)
+        return alt.Chart(pd.DataFrame({
+            "label": ["Invalid grouping"],
+            "count": [1]
+        })).mark_arc().encode(
+            theta="count:Q",
+            color="label:N"
+        ).properties(title="Invalid grouping").to_dict(format="vega")
+
+    df_country = df_selected[df_selected["Birthplace"] == selected_country].copy()
+
+    if grouping_level in ["CSD", "CD"]:
+        df_country = df_country.merge(gdf_selected[["DGUID", name_col]], on="DGUID", how="left")
+        df_grouped = df_country.groupby(name_col, as_index=False)["Count"].sum()
+        df_grouped.rename(columns={name_col: "Label"}, inplace=True)
+    else:  # Province
+        df_grouped = df_country.groupby("Province", as_index=False)["Count"].sum()
+        df_grouped.rename(columns={"Province": "Label"}, inplace=True)
 
     if df_grouped.empty:
         return alt.Chart(pd.DataFrame({
@@ -365,6 +525,8 @@ def update_csd_pie_chart(selected_country, grouping_level):
     )
 
     return chart.to_dict(format="vega")
+
+
 
 
 
