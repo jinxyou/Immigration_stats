@@ -24,7 +24,7 @@ csd_geojson = json.loads(gdf_csd.to_json())
 df = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_subdivisions.parquet")
 df_immi = df[(df["Age (8D)"] == "Total - Age") & (df["Gender (3)"] == "Total - Gender")]
 df_immi = df_immi[["GEO", "DGUID", "Place of birth (290)",
-                   "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]", "Type"]]
+                   "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]", "Province", "Type"]]
 df_immi.rename(columns={
     "Place of birth (290)": "Birthplace",
     "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Count"
@@ -141,7 +141,20 @@ app.layout = dbc.Container([
             center=[54.5, -126],
             zoom=5,
             style={'width': '100%', 'height': '600px'},
-            id="bc-map")
+            id="bc-map"),
+            html.Label("Group chart by:"),
+            dcc.Dropdown(
+                id="csd-pie-grouping",
+                options=[
+                    {"label": "CSD", "value": "CSD"},
+                    {"label": "Province", "value": "Province"}
+                ],
+                value="CSD",
+                clearable=False,
+                style={"marginBottom": "10px"}
+            ),
+            html.Label("Distribution across CSDs:"),
+            dvc.Vega(id="csd-pie-chart"),
         ], width=6),
 
         dbc.Col([
@@ -238,6 +251,29 @@ def update_world_title(feature):
     return "Immigrant Origins for All Subdivisions"
 
 
+def collapse_small_slices(df, label_col, count_col="Count", threshold=1):
+    df = df.copy()
+    total = df[count_col].sum()
+    df["Percentage"] = df[count_col] / total * 100
+
+    major = df[df["Percentage"] >= threshold]
+    minor = df[df["Percentage"] < threshold]
+
+    if not minor.empty:
+        other = pd.DataFrame({
+            label_col: ["Other"],
+            count_col: [minor[count_col].sum()],
+            "Percentage": [minor["Percentage"].sum()]
+        })
+        df_final = pd.concat([major, other], ignore_index=True)
+    else:
+        df_final = major
+
+    df_final["Percentage"] = df_final["Percentage"].round(2)
+    return df_final
+
+
+
 @callback(
     Output("origin-pie-chart", "spec"),
     Input("selected-dguid", "data"),
@@ -251,25 +287,13 @@ def update_pie_chart_altair(selected_dguid, grouping_level):
         })).mark_arc().encode(
             theta="count:Q",
             color="label:N"
-        ).properties(title="Select a subdivision").to_dict()
+        ).properties(title="Select a subdivision").to_dict(format="vega")
 
-    # Filter for selected CSD and remove total
     df_filtered = df_immi[
         (df_immi["DGUID"] == selected_dguid) &
         (df_immi["Birthplace"] != "Total – Place of birth")
     ].copy()
 
-    # Ensure Type column exists
-    if "Type" not in df_filtered.columns:
-        return alt.Chart(pd.DataFrame({
-            "label": ["Missing 'Type' column"],
-            "count": [1]
-        })).mark_arc().encode(
-            theta="count:Q",
-            color="label:N"
-        ).properties(title="Error").to_dict()
-
-    # Keep only rows of the selected type
     df_filtered = df_filtered[df_filtered["Type"] == grouping_level]
 
     if df_filtered.empty:
@@ -279,16 +303,65 @@ def update_pie_chart_altair(selected_dguid, grouping_level):
         })).mark_arc().encode(
             theta="count:Q",
             color="label:N"
-        ).properties(title="No data").to_dict()
+        ).properties(title="No data").to_dict(format="vega")
 
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
+    df_agg = collapse_small_slices(df_agg, label_col="Birthplace")
 
     chart = alt.Chart(df_agg).mark_arc().encode(
         theta=alt.Theta("Count:Q"),
         color=alt.Color("Birthplace:N"),
-        tooltip=["Birthplace", "Count"]
+        tooltip=["Birthplace", "Count", "Percentage"]
     ).properties(
         title=f"Immigrants by {grouping_level}"
+    )
+
+    return chart.to_dict(format="vega")
+
+
+
+@callback(
+    Output("csd-pie-chart", "spec"),
+    Input("selected-country", "data"),
+    Input("csd-pie-grouping", "value")
+)
+def update_csd_pie_chart(selected_country, grouping_level):
+    if not selected_country:
+        return alt.Chart(pd.DataFrame({
+            "label": ["No country selected"],
+            "count": [1]
+        })).mark_arc().encode(
+            theta="count:Q",
+            color="label:N"
+        ).properties(title="Select a country on the world map").to_dict(format="vega")
+
+    df_country = df_immi[df_immi["Birthplace"] == selected_country].copy()
+    df_merged = df_country.merge(gdf_csd[["DGUID", "CSDNAME"]], on="DGUID", how="left")
+
+    if grouping_level == "Province":
+        df_grouped = df_merged.groupby("Province", as_index=False)["Count"].sum()
+        df_grouped.rename(columns={"Province": "Label"}, inplace=True)
+    else:
+        df_grouped = df_merged.groupby("CSDNAME", as_index=False)["Count"].sum()
+        df_grouped.rename(columns={"CSDNAME": "Label"}, inplace=True)
+
+    if df_grouped.empty:
+        return alt.Chart(pd.DataFrame({
+            "label": ["No data"],
+            "count": [1]
+        })).mark_arc().encode(
+            theta="count:Q",
+            color="label:N"
+        ).properties(title="No data").to_dict(format="vega")
+
+    df_grouped = collapse_small_slices(df_grouped, label_col="Label")
+
+    chart = alt.Chart(df_grouped).mark_arc().encode(
+        theta=alt.Theta("Count:Q"),
+        color=alt.Color("Label:N", title=grouping_level),
+        tooltip=["Label", "Count", "Percentage"]
+    ).properties(
+        title=f"{selected_country} Immigrants by {grouping_level}"
     )
 
     return chart.to_dict(format="vega")
