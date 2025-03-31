@@ -71,7 +71,8 @@ def get_world_geojson(selected_dguid):
     df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
 
     merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
-    merged = merged[~merged["Count"].isna()]
+    # merged = merged[~merged["Count"].isna()]
+    merged["Count"] = merged["Count"].fillna(0)
     merged["tooltip"] = merged.apply(
         lambda row: f"{row['ADMIN']}: {int(row['Count'])} ({row['Percentage']}%)", axis=1
     )
@@ -95,14 +96,14 @@ def get_csd_geojson(selected_country):
 
     # Merge and compute percentage
     df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
-    df_merged = df_merged[~df_merged["CountryCount"].isna()]
-    # df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
+    # df_merged = df_merged[~df_merged["CountryCount"].isna()]
+    df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
     df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
 
     # Merge with spatial data
     merged = gdf_csd.merge(df_merged, on="DGUID", how="left")
-    merged = merged[~merged["CountryCount"].isna()]
-    # merged["Percentage"] = merged["Percentage"].fillna(0)
+    # merged = merged[~merged["CountryCount"].isna()]
+    merged["Percentage"] = merged["Percentage"].fillna(0)
 
     # Tooltip display
     merged["tooltip"] = merged.apply(
