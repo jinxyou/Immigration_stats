@@ -29,28 +29,61 @@ gdf_cd.rename(columns={"CDNAME": "NAME"}, inplace=True)
 
 
 
+status_options = [
+    "Total",
+    "Non-immigrants",
+    "Immigrants",
+    "Non-permanent residents"
+]
+
 # === Load & Clean Immigration Data ===
-df = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_subdivisions.parquet")
-df_immi = df[(df["Age (8D)"] == "Total - Age") & (df["Gender (3)"] == "Total - Gender")]
-df_immi = df_immi[["GEO", "DGUID", "Place of birth (290)",
-                   "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]", "Province", "Type"]]
-df_immi.rename(columns={
+df_csd = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_subdivisions.parquet")
+df_csd = df_csd[(df_csd["Age (8D)"] == "Total - Age") & (df_csd["Gender (3)"] == "Total - Gender")]
+df_csd = df_csd[["GEO", "DGUID", "Place of birth (290)",
+                   "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]",
+                   "Immigrant status and period of immigration (11):Non-immigrants[2]",
+                   "Immigrant status and period of immigration (11):Immigrants[3]",
+                   "Immigrant status and period of immigration (11):Non-permanent residents[11]",
+                   "Province", "Type"]]
+df_csd.rename(columns={
     "Place of birth (290)": "Birthplace",
-    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Count"
+    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Total",
+    "Immigrant status and period of immigration (11):Non-immigrants[2]": "Non-immigrants",
+    "Immigrant status and period of immigration (11):Immigrants[3]": "Immigrants",
+    "Immigrant status and period of immigration (11):Non-permanent residents[11]": "Non-permanent residents"
 }, inplace=True)
-df_immi["Count"] = pd.to_numeric(df_immi["Count"], errors='coerce')
-df_immi = df_immi.dropna(subset=["Count"])
+df_csd = df_csd.melt(
+    id_vars=["GEO", "DGUID", "Birthplace", "Province", "Type"],
+    value_vars=["Total", "Non-immigrants", "Immigrants", "Non-permanent residents"],
+    var_name="ImmigrantStatus",
+    value_name="Count"
+)
+df_csd["Count"] = pd.to_numeric(df_csd["Count"], errors='coerce')
+df_csd = df_csd.dropna(subset=["Count"])
+
+# Add the same transformation to df_cd
 
 df_cd = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_divisions.parquet")
 df_cd = df_cd[(df_cd["Age (8D)"] == "Total - Age") & (df_cd["Gender (3)"] == "Total - Gender")]
 df_cd = df_cd[["GEO", "DGUID", "Place of birth (290)",
-               "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]", "Province", "Type"]]
-
+               "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]",
+               "Immigrant status and period of immigration (11):Non-immigrants[2]",
+               "Immigrant status and period of immigration (11):Immigrants[3]",
+               "Immigrant status and period of immigration (11):Non-permanent residents[11]",
+               "Province", "Type"]]
 df_cd.rename(columns={
     "Place of birth (290)": "Birthplace",
-    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Count"
+    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Total",
+    "Immigrant status and period of immigration (11):Non-immigrants[2]": "Non-immigrants",
+    "Immigrant status and period of immigration (11):Immigrants[3]": "Immigrants",
+    "Immigrant status and period of immigration (11):Non-permanent residents[11]": "Non-permanent residents"
 }, inplace=True)
-
+df_cd = df_cd.melt(
+    id_vars=["GEO", "DGUID", "Birthplace", "Province", "Type"],
+    value_vars=["Total", "Non-immigrants", "Immigrants", "Non-permanent residents"],
+    var_name="ImmigrantStatus",
+    value_name="Count"
+)
 df_cd["Count"] = pd.to_numeric(df_cd["Count"], errors="coerce")
 df_cd = df_cd.dropna(subset=["Count"])
 
@@ -85,9 +118,9 @@ style = dict(weight=1, opacity=1, color='black', dashArray='3', fillOpacity=0.7)
 # === Function to Build World GeoJSON from Selection ===
 def get_world_geojson(selected_dguid):
     if selected_dguid == "ALL":
-        df_filtered = df_immi.copy()
+        df_filtered = df_csd.copy()
     else:
-        df_filtered = df_immi[df_immi["DGUID"] == selected_dguid]
+        df_filtered = df_csd[df_csd["DGUID"] == selected_dguid]
 
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
     match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
@@ -113,11 +146,11 @@ def get_csd_geojson(selected_country):
     print(selected_country)
 
     # Total immigrants per CSD (from "Total – Place of birth" rows)
-    df_total = df_immi[df_immi["Birthplace"] == "Total – Place of birth"]
+    df_total = df_csd[df_csd["Birthplace"] == "Total – Place of birth"]
     df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
     # Immigrants from selected country per CSD
-    df_country = df_immi[df_immi["Birthplace"] == selected_country]
+    df_country = df_csd[df_csd["Birthplace"] == selected_country]
     df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
     # Merge and compute percentage
@@ -151,6 +184,16 @@ csd_geojson = get_csd_geojson(None)
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True)
 
 app.layout = dbc.Container([
+    dbc.Row([
+        html.Label("Immigrant status:"),
+        dcc.Dropdown(
+            id="immigrant-status",
+            options=[{"label": s, "value": s} for s in status_options],
+            value="Total",
+            clearable=False,
+            style={"marginBottom": "10px"}
+        ),
+    ]),
     dbc.Row([
         dbc.Col([
             html.Label("Select administrative level:"),
@@ -243,19 +286,20 @@ def sync_admin_level_to_store(val):
 
 @callback(
     Output("csd-geojson", "data"),
+    Input("immigrant-status", "value"),
     Input("selected-country", "data"),
     Input("admin-level", "value")
 )
-def update_subdivision_geojson(selected_country, admin_level):
+def update_subdivision_geojson(immigrant_status, selected_country, admin_level):
     if admin_level == "CSD":
         # Existing logic for CSD level
         if not selected_country:
             return json.loads(gdf_csd.to_json())
 
-        df_total = df_immi[df_immi["Birthplace"] == "Total – Place of birth"]
+        df_total = df_csd[(df_csd["Birthplace"] == "Total – Place of birth") & (df_csd["ImmigrantStatus"] == immigrant_status)]
         df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-        df_country = df_immi[df_immi["Birthplace"] == selected_country]
+        df_country = df_csd[(df_csd["Birthplace"] == selected_country) & (df_csd["ImmigrantStatus"] == immigrant_status)]
         df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
         df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
@@ -275,10 +319,10 @@ def update_subdivision_geojson(selected_country, admin_level):
         if not selected_country:
             return json.loads(gdf_cd.to_json())
 
-        df_total = df_cd[df_cd["Birthplace"] == "Total – Place of birth"]
+        df_total = df_cd[(df_cd["Birthplace"] == "Total – Place of birth") & (df_cd["ImmigrantStatus"] == immigrant_status)]
         df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-        df_country = df_cd[df_cd["Birthplace"] == selected_country]
+        df_country = df_cd[(df_cd["Birthplace"] == selected_country) & (df_cd["ImmigrantStatus"] == immigrant_status)]
         df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
         df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
@@ -304,19 +348,24 @@ def update_subdivision_geojson(selected_country, admin_level):
 
 @callback(
     Output("world-geojson", "data"),
+    Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
     Input("admin-level-store", "data")
 )
-def update_world_geojson(selected_dguid, admin_level):
+def update_world_geojson(immigrant_status, selected_dguid, admin_level):
     if admin_level == "CD":
         df_selected = df_cd
     else:
-        df_selected = df_immi
+        df_selected = df_csd
 
     if selected_dguid == "ALL":
         df_filtered = df_selected.copy()
     else:
-        df_filtered = df_selected[df_selected["DGUID"] == selected_dguid]
+        df_filtered = df_selected[
+            (df_selected["DGUID"] == selected_dguid) &
+            (df_selected["ImmigrantStatus"] == immigrant_status)
+        ]
+
 
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
     match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
@@ -400,11 +449,12 @@ def collapse_small_slices(df, label_col, count_col="Count", threshold=1):
 
 @callback(
     Output("origin-pie-chart", "spec"),
+    Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
     Input("pie-grouping", "value"),
     Input("admin-level-store", "data")
 )
-def update_world_pie_chart(selected_dguid, grouping_level, admin_level):
+def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, admin_level):
     if selected_dguid == "ALL":
         return alt.Chart(pd.DataFrame({
             "label": ["No subdivision selected"],
@@ -415,10 +465,11 @@ def update_world_pie_chart(selected_dguid, grouping_level, admin_level):
         ).properties(title="Select a subdivision").to_dict(format="vega")
 
     # Select the right dataframe
-    df_selected = df_cd if admin_level == "CD" else df_immi
+    df_selected = df_cd if admin_level == "CD" else df_csd
 
     df_filtered = df_selected[
         (df_selected["DGUID"] == selected_dguid) &
+        (df_selected["ImmigrantStatus"] == immigrant_status) &
         (df_selected["Birthplace"] != "Total – Place of birth")
     ].copy()
 
@@ -460,10 +511,11 @@ def update_world_pie_chart(selected_dguid, grouping_level, admin_level):
 
 @callback(
     Output("csd-pie-chart", "spec"),
+    Input("immigrant-status", "value"),
     Input("selected-country", "data"),
     Input("csd-pie-grouping", "value")
 )
-def update_csd_pie_chart(selected_country, grouping_level):
+def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
     if not selected_country:
         return alt.Chart(pd.DataFrame({
             "label": ["No country selected"],
@@ -475,7 +527,7 @@ def update_csd_pie_chart(selected_country, grouping_level):
 
     # Use both dataframes depending on grouping
     if grouping_level == "CSD":
-        df_selected = df_immi
+        df_selected = df_csd
         gdf_selected = gdf_csd
         name_col = "NAME"
     elif grouping_level == "CD":
@@ -483,7 +535,7 @@ def update_csd_pie_chart(selected_country, grouping_level):
         gdf_selected = gdf_cd
         name_col = "NAME"
     elif grouping_level == "Province":
-        df_selected = df_immi  # can use either
+        df_selected = df_csd  # can use either
         name_col = "Province"
         gdf_selected = None
     else:
@@ -495,7 +547,10 @@ def update_csd_pie_chart(selected_country, grouping_level):
             color="label:N"
         ).properties(title="Invalid grouping").to_dict(format="vega")
 
-    df_country = df_selected[df_selected["Birthplace"] == selected_country].copy()
+    df_country = df_selected[
+        (df_selected["Birthplace"] == selected_country) &
+        (df_selected["ImmigrantStatus"] == immigrant_status)
+    ].copy()
 
     if grouping_level in ["CSD", "CD"]:
         df_country = df_country.merge(gdf_selected[["DGUID", name_col]], on="DGUID", how="left")
