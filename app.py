@@ -73,6 +73,7 @@ def get_world_geojson(selected_dguid):
     merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     # merged = merged[~merged["Count"].isna()]
     merged["Count"] = merged["Count"].fillna(0)
+    merged["Percentage"] = merged["Percentage"].fillna(0)
     merged["tooltip"] = merged.apply(
         lambda row: f"{row['ADMIN']}: {int(row['Count'])} ({row['Percentage']}%)", axis=1
     )
@@ -153,7 +154,6 @@ app.layout = dbc.Container([
                 clearable=False,
                 style={"marginBottom": "10px"}
             ),
-            html.Label("Distribution across CSDs:"),
             dvc.Vega(id="csd-pie-chart"),
         ], width=6),
 
@@ -168,7 +168,7 @@ app.layout = dbc.Container([
                     hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
                     options=dict(style=style_handle),
                     hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
-)
+            )
             ],
             center=[20, 0],
             zoom=2,
