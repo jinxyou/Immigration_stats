@@ -105,13 +105,13 @@ style_handle = assign("""function(feature, context){
     const {classes, colorscale, style, colorProp} = context.hideout;
     const value = feature.properties[colorProp];
     for (let i = 0; i < classes.length; ++i) {
-        if (value > classes[i]) {
+        if (value >= classes[i]) {
             style.fillColor = colorscale[i];
         }
     }
     return style;
 }""")
-style = dict(weight=1, opacity=1, color='black', dashArray='3', fillOpacity=0.7)
+style = dict(weight=1, opacity=1, color='white', dashArray='3', fillOpacity=0.5)
 
 
 
