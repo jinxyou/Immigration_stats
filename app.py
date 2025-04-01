@@ -25,6 +25,15 @@ gdf_cd["geometry"] = gdf_cd["geometry"].buffer(0)
 gdf_cd = gdf_cd[~gdf_cd.geometry.is_empty & gdf_cd.geometry.notnull()].copy()
 gdf_cd.rename(columns={"CDNAME": "NAME"}, inplace=True)
 
+gdf_prov = gpd.read_file("data/raw/geojson/lpr_000b21a_e_simplified_0.1percent.geojson")
+gdf_prov.crs = "EPSG:3347"
+gdf_prov = gdf_prov.to_crs(epsg=4326)
+gdf_prov["geometry"] = gdf_prov["geometry"].buffer(0)
+gdf_prov = gdf_prov[~gdf_prov.geometry.is_empty & gdf_prov.geometry.notnull()].copy()
+gdf_prov.drop(columns=["NAME"], inplace=True, errors="ignore")
+gdf_prov.rename(columns={"PRENAME": "NAME"}, inplace=True)
+
+
 
 
 
@@ -61,8 +70,8 @@ df_csd = df_csd.melt(
 df_csd["Count"] = pd.to_numeric(df_csd["Count"], errors='coerce')
 df_csd = df_csd.dropna(subset=["Count"])
 
-# Add the same transformation to df_cd
 
+# Add the same transformation to df_cd
 df_cd = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_divisions.parquet")
 df_cd = df_cd[(df_cd["Age (8D)"] == "Total - Age") & (df_cd["Gender (3)"] == "Total - Gender")]
 df_cd = df_cd[["GEO", "DGUID", "Place of birth (290)",
@@ -86,6 +95,36 @@ df_cd = df_cd.melt(
 )
 df_cd["Count"] = pd.to_numeric(df_cd["Count"], errors="coerce")
 df_cd = df_cd.dropna(subset=["Count"])
+
+
+# === Load & Clean Province Immigration Data ===
+df_prov = pd.read_parquet("data/processed/immigration_data/immigration_stats_provinces.parquet")
+df_prov = df_prov[(df_prov["Age (8D)"] == "Total - Age") & (df_prov["Gender (3)"] == "Total - Gender")]
+
+df_prov = df_prov[["GEO", "DGUID", "Place of birth (290)",
+                   "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]",
+                   "Immigrant status and period of immigration (11):Non-immigrants[2]",
+                   "Immigrant status and period of immigration (11):Immigrants[3]",
+                   "Immigrant status and period of immigration (11):Non-permanent residents[11]",
+                   "Province", "Type"]]
+
+df_prov.rename(columns={
+    "Place of birth (290)": "Birthplace",
+    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]": "Total",
+    "Immigrant status and period of immigration (11):Non-immigrants[2]": "Non-immigrants",
+    "Immigrant status and period of immigration (11):Immigrants[3]": "Immigrants",
+    "Immigrant status and period of immigration (11):Non-permanent residents[11]": "Non-permanent residents"
+}, inplace=True)
+
+df_prov = df_prov.melt(
+    id_vars=["GEO", "DGUID", "Birthplace", "Province", "Type"],
+    value_vars=["Total", "Non-immigrants", "Immigrants", "Non-permanent residents"],
+    var_name="ImmigrantStatus",
+    value_name="Count"
+)
+df_prov["Count"] = pd.to_numeric(df_prov["Count"], errors="coerce")
+df_prov = df_prov.dropna(subset=["Count"])
+
 
 
 
@@ -202,6 +241,7 @@ app.layout = dbc.Container([
                 options=[
                     {"label": "Census Subdivision (CSD)", "value": "CSD"},
                     {"label": "Census Division (CD)", "value": "CD"},
+                    {"label": "Province", "value": "Province"},
                 ],
                 value="CSD",
                 clearable=False,
@@ -222,18 +262,7 @@ app.layout = dbc.Container([
             zoom=5,
             style={'width': '100%', 'height': '600px'},
             id="bc-map"),
-            html.Label("Group chart by:"),
-            dcc.Dropdown(
-                id="csd-pie-grouping",
-                options=[
-                    {"label": "CSD", "value": "CSD"},
-                    {"label": "CD", "value": "CD"},
-                    {"label": "Province", "value": "Province"}
-                ],
-                value="CSD",
-                clearable=False,
-                style={"marginBottom": "10px"}
-            ),
+
             dvc.Vega(id="csd-pie-chart"),
         ], width=6),
 
@@ -336,6 +365,30 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level):
             if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1)
 
         return json.loads(merged.to_json())
+    
+    elif admin_level == "Province":
+        if not selected_country:
+            return json.loads(gdf_prov.to_json())
+
+        df_total = df_prov[(df_prov["Birthplace"] == "Total – Place of birth") & (df_prov["ImmigrantStatus"] == immigrant_status)]
+        df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
+
+        df_country = df_prov[(df_prov["Birthplace"] == selected_country) & (df_prov["ImmigrantStatus"] == immigrant_status)]
+        df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
+
+        df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
+        df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
+        df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
+
+        merged = gdf_prov.merge(df_merged, on="DGUID", how="left")
+        merged["Percentage"] = merged["Percentage"].fillna(0)
+        merged["tooltip"] = merged.apply(
+            lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
+            if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1
+        )
+
+        return json.loads(merged.to_json())
+
 
     return json.loads(gdf_csd.to_json())  # fallback
 
@@ -355,8 +408,11 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level):
 def update_world_geojson(immigrant_status, selected_dguid, admin_level):
     if admin_level == "CD":
         df_selected = df_cd
+    elif admin_level == "Province":
+        df_selected = df_prov
     else:
         df_selected = df_csd
+
 
     if selected_dguid == "ALL":
         df_filtered = df_selected.copy()
@@ -406,11 +462,12 @@ def update_selected_dguid(feature):
 
 @callback(
     Output("canada-map-title", "children"),
+    Input("admin-level-store", "data"),
     Input("selected-country", "data")
 )
-def update_canada_map_title(selected_country):
+def update_canada_map_title(admin_level, selected_country):
     if selected_country:
-        return f"Canada Subdivisions Map for Immigrants from {selected_country}"
+        return f"Canada {admin_level} Map for Immigrants from {selected_country}"
     return "Canada Subdivisions Map"
 
 
@@ -459,10 +516,10 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
         return alt.Chart(pd.DataFrame({
             "label": ["No subdivision selected"],
             "count": [1]
-        })).mark_arc().encode(
-            theta="count:Q",
-            color="label:N"
-        ).properties(title="Select a subdivision").to_dict(format="vega")
+        })).mark_bar().encode(
+            x="label:N",
+            y="count:Q"
+        ).properties(title="No data").to_dict(format="vega")
 
     # Select the right dataframe
     df_selected = df_cd if admin_level == "CD" else df_csd
@@ -487,22 +544,23 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
         return alt.Chart(pd.DataFrame({
             "label": [f"No data for {grouping_level}"],
             "count": [1]
-        })).mark_arc().encode(
-            theta="count:Q",
-            color="label:N"
+        })).mark_bar().encode(
+            x="label:N",
+            y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
+
 
     # Aggregate and simplify
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
     df_agg = collapse_small_slices(df_agg, label_col="Birthplace")
 
-    chart = alt.Chart(df_agg).mark_arc().encode(
-        theta=alt.Theta("Count:Q"),
-        color=alt.Color("Birthplace:N"),
-        tooltip=["Birthplace", "Count", "Percentage"]
-    ).properties(
-        title=f"Immigrants by {grouping_level}"
+    chart = alt.Chart(df_agg).mark_bar().encode(
+        x=alt.X("Birthplace:N", sort="-y", title="Birthplace"),
+        y=alt.Y("Count:Q", title="Number of Immigrants"),
+        tooltip=["Birthplace", "Count", "Percentage"],
+        color=alt.Color("Birthplace:N", legend=None)
     )
+
 
     return chart.to_dict(format="vega")
 
@@ -513,17 +571,18 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     Output("csd-pie-chart", "spec"),
     Input("immigrant-status", "value"),
     Input("selected-country", "data"),
-    Input("csd-pie-grouping", "value")
+    Input("admin-level-store", "data")
 )
 def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
     if not selected_country:
         return alt.Chart(pd.DataFrame({
             "label": ["No country selected"],
             "count": [1]
-        })).mark_arc().encode(
-            theta="count:Q",
-            color="label:N"
+        })).mark_bar().encode(
+            x="label:N",
+            y="count:Q"
         ).properties(title="Select a country on the world map").to_dict(format="vega")
+
 
     # Use both dataframes depending on grouping
     if grouping_level == "CSD":
@@ -542,9 +601,9 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
         return alt.Chart(pd.DataFrame({
             "label": ["Invalid grouping"],
             "count": [1]
-        })).mark_arc().encode(
-            theta="count:Q",
-            color="label:N"
+        })).mark_bar().encode(
+            x="label:N",
+            y="count:Q"
         ).properties(title="Invalid grouping").to_dict(format="vega")
 
     df_country = df_selected[
@@ -564,19 +623,18 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
         return alt.Chart(pd.DataFrame({
             "label": ["No data"],
             "count": [1]
-        })).mark_arc().encode(
-            theta="count:Q",
-            color="label:N"
+        })).mark_bar().encode(
+            x="label:N",
+            y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
 
     df_grouped = collapse_small_slices(df_grouped, label_col="Label")
 
-    chart = alt.Chart(df_grouped).mark_arc().encode(
-        theta=alt.Theta("Count:Q"),
-        color=alt.Color("Label:N", title=grouping_level),
-        tooltip=["Label", "Count", "Percentage"]
-    ).properties(
-        title=f"{selected_country} Immigrants by {grouping_level}"
+    chart = alt.Chart(df_grouped).mark_bar().encode(
+        x=alt.X("Label:N", sort="-y", title=grouping_level),
+        y=alt.Y("Count:Q", title="Number of Immigrants"),
+        tooltip=["Label", "Count", "Percentage"],
+        color=alt.Color("Label:N", legend=None)
     )
 
     return chart.to_dict(format="vega")
