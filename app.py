@@ -133,7 +133,14 @@ default_dguid = "ALL"
 # === Load & Clean World Countries GeoJSON ===
 world_gdf = gpd.read_file("data/processed/geojson/world_countries_clean.geojson")
 world_gdf["geometry"] = world_gdf["geometry"].buffer(0)
-world_gdf = world_gdf[world_gdf["ADMIN"] != "Canada"]
+
+region_gdf = gpd.read_file("data/processed/geojson/region_clean.geojson")
+region_gdf["geometry"] = region_gdf["geometry"].buffer(0)
+
+continent_gdf = gpd.read_file("data/processed/geojson/continent_clean.geojson")
+continent_gdf["geometry"] = continent_gdf["geometry"].buffer(0)
+
+
 
 
 # === World Style Function ===
@@ -219,6 +226,8 @@ def get_csd_geojson(selected_country):
 world_geojson = get_world_geojson(default_dguid)
 csd_geojson = get_csd_geojson(None)
 
+indent = "\u00A0\u00A0\u00A0"
+
 # === App Layout ===
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True)
 
@@ -287,11 +296,13 @@ app.layout = dbc.Container([
             dcc.Dropdown(
                 id="pie-grouping",
                 options=[
-                    {"label": "Country (including Canada)", "value": "Country (including Canada)"},
-                    {"label": "Country (excluding Canada)", "value": "Country (excluding Canada)"},
-                    {"label": "Continent", "value": "Continent"},
-                    {"label": "Region", "value": "Region"},
-                    {"label": "Inside Canada (Provinces)", "value": "Inside Canada (Provinces)"}
+                    {"label": f"World", "value": "Country (including Canada)"},
+                    {"label": f"{indent}Inside Canada", "value": "---", "disabled": True},
+                    {"label": f"{indent*2}Province", "value": "Inside Canada (Provinces)"},
+                    {"label": f"{indent}Outside Canada", "value": "---", "disabled": True},
+                    {"label": f"{indent*2}Continent", "value": "Continent"},
+                    {"label": f"{indent*2}Region", "value": "Region"},
+                    {"label": f"{indent*2}Country (excluding Canada)", "value": "Country (excluding Canada)"}
                 ],
                 value="Country (including Canada)",
                 clearable=False,
@@ -403,9 +414,10 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level):
     Output("world-geojson", "data"),
     Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
-    Input("admin-level-store", "data")
+    Input("admin-level-store", "data"),
+    Input("pie-grouping", "value")
 )
-def update_world_geojson(immigrant_status, selected_dguid, admin_level):
+def update_world_geojson(immigrant_status, selected_dguid, admin_level, pie_grouping):
     if admin_level == "CD":
         df_selected = df_cd
     elif admin_level == "Province":
@@ -424,12 +436,37 @@ def update_world_geojson(immigrant_status, selected_dguid, admin_level):
 
 
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
-    match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
-    total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
 
-    df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
 
-    merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+    if pie_grouping == "Region":
+        match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
+        merged = region_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+    elif pie_grouping == "Continent":
+        match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
+        merged = continent_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+    elif pie_grouping == "Inside Canada (Provinces)":
+        match = df_agg.loc[df_agg["Birthplace"] == "Inside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
+        merged = gdf_prov.merge(df_agg, left_on="NAME", right_on="Birthplace", how="left")
+        merged.rename(columns={"NAME": "ADMIN"}, inplace=True)
+    elif pie_grouping == "Country (including Canada)":
+        match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
+        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
+        merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+    elif pie_grouping == "Country (excluding Canada)":
+        match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
+        world_without_canada = world_gdf[world_gdf["ADMIN"]!="Inside Canada"]
+        merged = world_without_canada.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+
+    # merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     merged["Count"] = merged["Count"].fillna(0)
     merged["Percentage"] = merged["Percentage"].fillna(0)
     merged["tooltip"] = merged.apply(
@@ -521,46 +558,61 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
             y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
 
-    # Select the right dataframe
-    df_selected = df_cd if admin_level == "CD" else df_csd
+    # Select the correct DataFrame
+    df_selected = df_cd if admin_level == "CD" else df_prov if admin_level == "Province" else df_csd
 
+    # Filter by selected DGUID and status
     df_filtered = df_selected[
         (df_selected["DGUID"] == selected_dguid) &
         (df_selected["ImmigrantStatus"] == immigrant_status) &
         (df_selected["Birthplace"] != "Total – Place of birth")
     ].copy()
 
-    # Filter by grouping type
+
+    # Grouping logic
     if grouping_level == "Country (including Canada)":
         df_filtered = df_filtered[df_filtered["Type"].isin(["Country", "Inside Canada"])]
+        label_col = "Birthplace"
     elif grouping_level == "Country (excluding Canada)":
         df_filtered = df_filtered[df_filtered["Type"] == "Country"]
+        label_col = "Birthplace"
     elif grouping_level == "Inside Canada (Provinces)":
         df_filtered = df_filtered[df_filtered["Type"] == "Province"]
-    else:
+        label_col = "Birthplace"
+    elif grouping_level in ["Region", "Continent"]:
         df_filtered = df_filtered[df_filtered["Type"] == grouping_level]
+        label_col = "Birthplace"
+    else:
+        return alt.Chart(pd.DataFrame({
+            "label": ["Invalid grouping"],
+            "count": [1]
+        })).mark_bar().encode(
+            x="label:N",
+            y="count:Q"
+        ).properties(title="Invalid grouping").to_dict(format="vega")
+    
+    print(df_filtered)
 
     if df_filtered.empty:
         return alt.Chart(pd.DataFrame({
-            "label": [f"No data for {grouping_level}"],
+            "label": ["No data"],
             "count": [1]
         })).mark_bar().encode(
             x="label:N",
             y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
 
+    # Aggregate
+    df_grouped = df_filtered.groupby(label_col, as_index=False)["Count"].sum()
+    df_grouped.rename(columns={label_col: "Label"}, inplace=True)
+    df_grouped = collapse_small_slices(df_grouped, label_col="Label")
 
-    # Aggregate and simplify
-    df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
-    df_agg = collapse_small_slices(df_agg, label_col="Birthplace")
-
-    chart = alt.Chart(df_agg).mark_bar().encode(
-        x=alt.X("Birthplace:N", sort="-y", title="Birthplace"),
+    chart = alt.Chart(df_grouped).mark_bar().encode(
+        x=alt.X("Label:N", sort="-y", title=grouping_level),
         y=alt.Y("Count:Q", title="Number of Immigrants"),
-        tooltip=["Birthplace", "Count", "Percentage"],
-        color=alt.Color("Birthplace:N", legend=None)
+        tooltip=["Label", "Count", "Percentage"],
+        color=alt.Color("Label:N", legend=None)
     )
-
 
     return chart.to_dict(format="vega")
 
