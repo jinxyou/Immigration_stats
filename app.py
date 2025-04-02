@@ -466,6 +466,8 @@ def update_world_geojson(immigrant_status, selected_dguid, admin_level, pie_grou
         world_without_canada = world_gdf[world_gdf["ADMIN"]!="Inside Canada"]
         merged = world_without_canada.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
 
+    print("map:", merged)
+
     # merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     merged["Count"] = merged["Count"].fillna(0)
     merged["Percentage"] = merged["Percentage"].fillna(0)
@@ -518,10 +520,12 @@ def update_world_title(feature):
     return "Immigrant Origins for All Subdivisions"
 
 
-def collapse_small_slices(df, label_col, count_col="Count", threshold=1):
+def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
     df = df.copy()
-    total = df[count_col].sum()
+    if total is None:
+        total = df[count_col].sum()
     df["Percentage"] = df[count_col] / total * 100
+    print(total)
 
     major = df[df["Percentage"] >= threshold]
     minor = df[df["Percentage"] < threshold]
@@ -573,14 +577,24 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     if grouping_level == "Country (including Canada)":
         df_filtered = df_filtered[df_filtered["Type"].isin(["Country", "Inside Canada"])]
         label_col = "Birthplace"
+        match = df_filtered.loc[df_filtered["Birthplace"] == "Total – Place of birth", "Count"]
+        total_count = match.values[0] if not match.empty else df_filtered["Count"].sum()
     elif grouping_level == "Country (excluding Canada)":
         df_filtered = df_filtered[df_filtered["Type"] == "Country"]
         label_col = "Birthplace"
+        match = df_filtered.loc[df_filtered["Birthplace"] == "Outside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_filtered["Count"].sum()
     elif grouping_level == "Inside Canada (Provinces)":
         df_filtered = df_filtered[df_filtered["Type"] == "Province"]
         label_col = "Birthplace"
+        match = df_filtered.loc[df_filtered["Birthplace"] == "Inside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_filtered["Count"].sum()
     elif grouping_level in ["Region", "Continent"]:
-        df_filtered = df_filtered[df_filtered["Type"] == grouping_level]
+        match = df_filtered.loc[df_filtered["Birthplace"] == "Outside Canada", "Count"]
+        total_count = match.values[0] if not match.empty else df_filtered["Count"].sum()
+        df_filtered = df_filtered[
+            (df_filtered["Type"] == grouping_level) | (df_filtered["Birthplace"] == "Oceania")
+        ]
         label_col = "Birthplace"
     else:
         return alt.Chart(pd.DataFrame({
@@ -591,7 +605,7 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
             y="count:Q"
         ).properties(title="Invalid grouping").to_dict(format="vega")
     
-    print(df_filtered)
+    
 
     if df_filtered.empty:
         return alt.Chart(pd.DataFrame({
@@ -605,7 +619,9 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     # Aggregate
     df_grouped = df_filtered.groupby(label_col, as_index=False)["Count"].sum()
     df_grouped.rename(columns={label_col: "Label"}, inplace=True)
-    df_grouped = collapse_small_slices(df_grouped, label_col="Label")
+    df_grouped = collapse_small_slices(df_grouped, "Label", total_count)
+
+    print(df_grouped)
 
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort="-y", title=grouping_level),
@@ -680,7 +696,7 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
             y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
 
-    df_grouped = collapse_small_slices(df_grouped, label_col="Label")
+    df_grouped = collapse_small_slices(df_grouped, "Label", None)
 
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort="-y", title=grouping_level),
