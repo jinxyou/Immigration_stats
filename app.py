@@ -276,6 +276,22 @@ app.layout = dbc.Container([
         ], width=6),
 
         dbc.Col([
+            html.Label("Select administrative level:"),
+            dcc.Dropdown(
+                id="pie-grouping",
+                options=[
+                    {"label": f"World", "value": "Country (including Canada)"},
+                    {"label": f"{indent}Inside Canada", "value": "---", "disabled": True},
+                    {"label": f"{indent*2}Province", "value": "Inside Canada (Provinces)"},
+                    {"label": f"{indent}Outside Canada", "value": "---", "disabled": True},
+                    {"label": f"{indent*2}Continent", "value": "Continent"},
+                    {"label": f"{indent*2}Region", "value": "Region"},
+                    {"label": f"{indent*2}Country (excluding Canada)", "value": "Country (excluding Canada)"}
+                ],
+                value="Country (including Canada)",
+                clearable=False,
+                style={"marginBottom": "10px", "width": "300px"}
+            ),
             html.H4("Immigrant Origins World Map", id="world-map-title"),
             dl.Map([
                 dl.TileLayer(),
@@ -292,30 +308,26 @@ app.layout = dbc.Container([
             zoom=2,
             style={'width': '100%', 'height': '600px'},
             id="world-map"),
-            html.Label("Group pie chart by:"),
-            dcc.Dropdown(
-                id="pie-grouping",
-                options=[
-                    {"label": f"World", "value": "Country (including Canada)"},
-                    {"label": f"{indent}Inside Canada", "value": "---", "disabled": True},
-                    {"label": f"{indent*2}Province", "value": "Inside Canada (Provinces)"},
-                    {"label": f"{indent}Outside Canada", "value": "---", "disabled": True},
-                    {"label": f"{indent*2}Continent", "value": "Continent"},
-                    {"label": f"{indent*2}Region", "value": "Region"},
-                    {"label": f"{indent*2}Country (excluding Canada)", "value": "Country (excluding Canada)"}
-                ],
-                value="Country (including Canada)",
-                clearable=False,
-                style={"marginBottom": "10px"}
-            ),
             dvc.Vega(id="origin-pie-chart"),
         ], width=6)
     ]),
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="admin-level-store", data="CSD"),
-    html.Div(id="selected-region")
+    dcc.Store(id="hovered-region", data=None),
+
 ], fluid=True)
+
+@callback(
+    Output("hovered-region", "data"),
+    Input("world-geojson", "hoverData")
+)
+def update_hovered_region(feature):
+    if not feature:
+        return None
+    return feature["properties"].get("ADMIN")  # or NAME if you're using NAME
+
+
 
 @callback(
     Output("admin-level-store", "data"),
@@ -550,9 +562,10 @@ def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
     Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
     Input("pie-grouping", "value"),
-    Input("admin-level-store", "data")
+    Input("admin-level-store", "data"),
+    Input("hovered-region", "data")
 )
-def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, admin_level):
+def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, admin_level, hovered_label):
     if selected_dguid == "ALL":
         return alt.Chart(pd.DataFrame({
             "label": ["No subdivision selected"],
@@ -623,12 +636,20 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
 
     print(df_grouped)
 
+    # Create chart with normal color, but fade out unhovered bars
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort="-y", title=grouping_level),
         y=alt.Y("Count:Q", title="Number of Immigrants"),
         tooltip=["Label", "Count", "Percentage"],
-        color=alt.Color("Label:N", legend=None)
+        color=alt.Color("Label:N", legend=None),
+        opacity=alt.condition(
+            alt.datum.Label == hovered_label,
+            alt.value(1.0),
+            alt.value(0.3)
+        ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
     )
+
+
 
     return chart.to_dict(format="vega")
 
