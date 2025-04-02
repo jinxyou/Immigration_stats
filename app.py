@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Output, Input, callback, State
+from dash import html, dcc, Output, Input, callback
 import dash_leaflet as dl
 import dash_bootstrap_components as dbc
 import geopandas as gpd
@@ -8,6 +8,7 @@ import json
 from dash_extensions.javascript import arrow_function, assign
 import dash_vega_components as dvc
 import altair as alt
+from flask_caching import Cache
 
 # === Load & Clean Canada GeoJSON ===
 gdf_csd = gpd.read_file("data/raw/geojson/lcsd000b21a_e_simplified_0.25percent.geojson")
@@ -246,8 +247,15 @@ csd_geojson = get_csd_geojson(None)
 
 indent = "\u00A0\u00A0\u00A0"
 
+
 # === App Layout ===
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True)
+cache = Cache(app.server, config={
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': 'cache-dir'
+})
+
+
 
 app.layout = dbc.Container([
     dbc.Row([
@@ -359,14 +367,42 @@ app.layout = dbc.Container([
             dvc.Vega(id="origin-pie-chart"),
         ], width=6),
     ]),
+    dcc.Store(id="filtered-data"),
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
-    dcc.Store(id="admin-level-store", data="CSD"),
     dcc.Store(id="hovered-world-map", data=None),
     dcc.Store(id="hovered-canada-map", data=None),
 
 
 ], fluid=True)
+
+@cache.memoize(timeout=60)
+@callback(
+    Output("filtered-data", "data"),
+    Input("immigrant-status", "value"),
+    Input("gender-filter", "value"),
+    Input("age-filter", "value"),
+    Input("admin-level", "value")
+)
+def filter_base_data(immigrant_status, gender_filter, age_filter, admin_level):
+    # Choose the correct DataFrame based on admin level.
+    if admin_level == "CD":
+        df = df_cd
+    elif admin_level == "Province":
+        df = df_prov
+    else:
+        df = df_csd
+
+    # Apply the base filtering.
+    filtered_df = df[
+        (df["ImmigrantStatus"] == immigrant_status) &
+        (df["Gender"] == gender_filter) &
+        (df["Age"].isin(age_filter))
+    ]
+    # Return the filtered DataFrame as a JSON string.
+    return filtered_df.to_json(date_format='iso', orient='split')
+
+
 
 @callback(
     Output("hovered-world-map", "data"),
@@ -388,13 +424,6 @@ def update_hovered_canada(feature):
 
 
 
-
-@callback(
-    Output("admin-level-store", "data"),
-    Input("admin-level", "value")
-)
-def sync_admin_level_to_store(val):
-    return val
 
 @callback(
     Output("csd-geojson", "data"),
@@ -480,33 +509,21 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level, 
 
 @callback(
     Output("world-geojson", "data"),
-    Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
-    Input("admin-level-store", "data"),
     Input("pie-grouping", "value"),
-    Input("gender-filter", "value"),
-    Input("age-filter", "value")
+    Input("filtered-data", "data"),
+    Input("admin-level", "value")
 )
-def update_world_geojson(immigrant_status, selected_dguid, admin_level, pie_grouping, gender_filter, age_filter):
-    if admin_level == "CD":
-        df_selected = df_cd
-    elif admin_level == "Province":
-        df_selected = df_prov
-    else:
-        df_selected = df_csd
-
-    if selected_dguid == "ALL":
-        df_filtered = df_selected.copy()
-    else:
-        df_filtered = df_selected[
-            (df_selected["DGUID"] == selected_dguid) &
-            (df_selected["ImmigrantStatus"] == immigrant_status) &
-            (df_selected["Gender"] == gender_filter) & 
-            (df_selected["Age"].isin(age_filter))
-        ]
-
-
-    df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
+def update_world_geojson(selected_dguid, pie_grouping, filtered_data_json, admin_level):
+    # Load the base filtered DataFrame.
+    filtered_df = pd.read_json(filtered_data_json, orient='split')
+    
+    # Further filter based on selected_dguid.
+    if selected_dguid != "ALL":
+        filtered_df = filtered_df[filtered_df["DGUID"] == selected_dguid]
+    
+    # Group the data for the world map.
+    df_agg = filtered_df.groupby("Birthplace", as_index=False)["Count"].sum()
 
 
     if pie_grouping == "Region":
@@ -536,8 +553,6 @@ def update_world_geojson(immigrant_status, selected_dguid, admin_level, pie_grou
         df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
         world_without_canada = world_gdf[world_gdf["ADMIN"]!="Inside Canada"]
         merged = world_without_canada.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
-
-    print("map:", merged)
 
     # merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     merged["Count"] = merged["Count"].fillna(0)
@@ -572,7 +587,7 @@ def update_selected_dguid(feature):
 
 @callback(
     Output("canada-map-title", "children"),
-    Input("admin-level-store", "data"),
+    Input("admin-level", "value"),
     Input("selected-country", "data")
 )
 def update_canada_map_title(admin_level, selected_country):
@@ -591,28 +606,28 @@ def update_world_title(feature):
     return "Immigrant Origins for All Subdivisions"
 
 
-def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
-    df = df.copy()
-    if total is None:
-        total = df[count_col].sum()
-    df["Percentage"] = df[count_col] / total * 100
-    print(total)
+# def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
+#     df = df.copy()
+#     if total is None:
+#         total = df[count_col].sum()
+#     df["Percentage"] = df[count_col] / total * 100
+#     print(total)
 
-    major = df[df["Percentage"] >= threshold]
-    minor = df[df["Percentage"] < threshold]
+#     major = df[df["Percentage"] >= threshold]
+#     minor = df[df["Percentage"] < threshold]
 
-    if not minor.empty:
-        other = pd.DataFrame({
-            label_col: ["Other"],
-            count_col: [minor[count_col].sum()],
-            "Percentage": [minor["Percentage"].sum()]
-        })
-        df_final = pd.concat([major, other], ignore_index=True)
-    else:
-        df_final = major
+#     if not minor.empty:
+#         other = pd.DataFrame({
+#             label_col: ["Other"],
+#             count_col: [minor[count_col].sum()],
+#             "Percentage": [minor["Percentage"].sum()]
+#         })
+#         df_final = pd.concat([major, other], ignore_index=True)
+#     else:
+#         df_final = major
 
-    df_final["Percentage"] = df_final["Percentage"].round(2)
-    return df_final
+#     df_final["Percentage"] = df_final["Percentage"].round(2)
+#     return df_final
 
 
 
@@ -621,7 +636,7 @@ def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
     Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
     Input("pie-grouping", "value"),
-    Input("admin-level-store", "data"),
+    Input("admin-level", "value"),
     Input("hovered-world-map", "data"),
     Input("gender-filter", "value"),
     Input("age-filter", "value")
@@ -699,8 +714,6 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     df_grouped = df_grouped.sort_values("Count", ascending=False).head(15)
 
 
-    print(df_grouped)
-
     # Create chart with normal color, but fade out unhovered bars
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort="-y", title=grouping_level),
@@ -721,16 +734,16 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
 
 
 
+
 @callback(
     Output("csd-pie-chart", "spec"),
-    Input("immigrant-status", "value"),
     Input("selected-country", "data"),
-    Input("admin-level-store", "data"),
+    Input("admin-level", "value"),
     Input("hovered-canada-map", "data"),
-    Input("gender-filter", "value"),
-    Input("age-filter", "value")
+    Input("filtered-data", "data")
 )
-def update_csd_pie_chart(immigrant_status, selected_country, grouping_level, hovered_label, gender_filter, age_filter):
+def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_data_json):
+    # If no country is selected, show a default message
     if not selected_country:
         return alt.Chart(pd.DataFrame({
             "label": ["No country selected"],
@@ -739,45 +752,35 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level, hov
             x="label:N",
             y="count:Q"
         ).properties(title="Select a country on the world map").to_dict(format="vega")
-
-
-    # Use both dataframes depending on grouping
-    if grouping_level == "CSD":
-        df_selected = df_csd
-        gdf_selected = gdf_csd
-        name_col = "NAME"
-    elif grouping_level == "CD":
-        df_selected = df_cd
-        gdf_selected = gdf_cd
-        name_col = "NAME"
-    elif grouping_level == "Province":
-        df_selected = df_csd  # can use either
-        name_col = "Province"
-        gdf_selected = None
+    
+    # Load the base filtered DataFrame from the store
+    df_filtered = pd.read_json(filtered_data_json, orient='split')
+    
+    # Further filter the data by the selected country (Birthplace)
+    df_country = df_filtered[df_filtered["Birthplace"] == selected_country].copy()
+    
+    # Depending on the admin level, merge in the proper location names if needed
+    if admin_level in ["CSD", "CD"]:
+        # Merge with spatial data to get the name for grouping
+        if admin_level == "CSD":
+            merge_df = gdf_csd[["DGUID", "NAME"]]
+        else:
+            merge_df = gdf_cd[["DGUID", "NAME"]]
+        df_country = df_country.merge(merge_df, on="DGUID", how="left")
+        group_col = "NAME"
+    elif admin_level == "Province":
+        group_col = "Province"
     else:
-        return alt.Chart(pd.DataFrame({
-            "label": ["Invalid grouping"],
-            "count": [1]
-        })).mark_bar().encode(
-            x="label:N",
-            y="count:Q"
-        ).properties(title="Invalid grouping").to_dict(format="vega")
+        group_col = "Birthplace"  # fallback
 
-    df_country = df_selected[
-        (df_selected["Birthplace"] == selected_country) &
-        (df_selected["ImmigrantStatus"] == immigrant_status) & 
-        (df_selected["Gender"] == gender_filter) & 
-        (df_selected["Age"].isin(age_filter)) 
-    ].copy()
-
-    if grouping_level in ["CSD", "CD"]:
-        df_country = df_country.merge(gdf_selected[["DGUID", name_col]], on="DGUID", how="left")
-        df_grouped = df_country.groupby(name_col, as_index=False)["Count"].sum()
-        df_grouped.rename(columns={name_col: "Label"}, inplace=True)
-    else:  # Province
-        df_grouped = df_country.groupby("Province", as_index=False)["Count"].sum()
-        df_grouped.rename(columns={"Province": "Label"}, inplace=True)
-
+    # Group the data by the chosen label and sum counts
+    df_grouped = df_country.groupby(group_col, as_index=False)["Count"].sum()
+    df_grouped.rename(columns={group_col: "Label"}, inplace=True)
+    total = df_grouped["Count"].sum()
+    df_grouped["Percentage"] = (df_grouped["Count"] / total * 100).round(2)
+    df_grouped = df_grouped.sort_values("Count", ascending=False).head(15)
+    
+    # Return a default chart if there's no data after filtering
     if df_grouped.empty:
         return alt.Chart(pd.DataFrame({
             "label": ["No data"],
@@ -786,13 +789,10 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level, hov
             x="label:N",
             y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
-
-    df_grouped = df_grouped.sort_values("Count", ascending=False).head(15)
-    total = df_grouped["Count"].sum()
-    df_grouped["Percentage"] = (df_grouped["Count"] / total * 100).round(2)
-
+    
+    # Create the Altair chart and conditionally adjust opacity based on hover
     chart = alt.Chart(df_grouped).mark_bar().encode(
-        x=alt.X("Label:N", sort="-y", title=grouping_level),
+        x=alt.X("Label:N", sort="-y", title=admin_level),
         y=alt.Y("Count:Q", title="Number of Immigrants"),
         tooltip=["Label", "Count", "Percentage"],
         color=alt.Color("Label:N", legend=None),
@@ -802,9 +802,9 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level, hov
             alt.value(0.3)
         ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
     )
-
-
+    
     return chart.to_dict(format="vega")
+
 
 
 
