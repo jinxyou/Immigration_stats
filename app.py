@@ -314,18 +314,30 @@ app.layout = dbc.Container([
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="admin-level-store", data="CSD"),
-    dcc.Store(id="hovered-region", data=None),
+    dcc.Store(id="hovered-world-map", data=None),
+    dcc.Store(id="hovered-canada-map", data=None),
+
 
 ], fluid=True)
 
 @callback(
-    Output("hovered-region", "data"),
+    Output("hovered-world-map", "data"),
     Input("world-geojson", "hoverData")
 )
 def update_hovered_region(feature):
     if not feature:
         return None
     return feature["properties"].get("ADMIN")  # or NAME if you're using NAME
+
+@callback(
+    Output("hovered-canada-map", "data"),
+    Input("csd-geojson", "hoverData")
+)
+def update_hovered_canada(feature):
+    if not feature:
+        return None
+    return feature["properties"].get("NAME")  # or use DGUID if that's your label
+
 
 
 
@@ -563,7 +575,7 @@ def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
     Input("selected-dguid", "data"),
     Input("pie-grouping", "value"),
     Input("admin-level-store", "data"),
-    Input("hovered-region", "data")
+    Input("hovered-world-map", "data")
 )
 def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, admin_level, hovered_label):
     if selected_dguid == "ALL":
@@ -662,9 +674,10 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     Output("csd-pie-chart", "spec"),
     Input("immigrant-status", "value"),
     Input("selected-country", "data"),
-    Input("admin-level-store", "data")
+    Input("admin-level-store", "data"),
+    Input("hovered-canada-map", "data")
 )
-def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
+def update_csd_pie_chart(immigrant_status, selected_country, grouping_level, hovered_label):
     if not selected_country:
         return alt.Chart(pd.DataFrame({
             "label": ["No country selected"],
@@ -727,8 +740,14 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
         x=alt.X("Label:N", sort="-y", title=grouping_level),
         y=alt.Y("Count:Q", title="Number of Immigrants"),
         tooltip=["Label", "Count", "Percentage"],
-        color=alt.Color("Label:N", legend=None)
+        color=alt.Color("Label:N", legend=None),
+        opacity=alt.condition(
+            alt.datum.Label == hovered_label,
+            alt.value(1.0),
+            alt.value(0.3)
+        ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
     )
+
 
     return chart.to_dict(format="vega")
 
