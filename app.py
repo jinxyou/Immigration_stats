@@ -632,7 +632,9 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     # Aggregate
     df_grouped = df_filtered.groupby(label_col, as_index=False)["Count"].sum()
     df_grouped.rename(columns={label_col: "Label"}, inplace=True)
-    df_grouped = collapse_small_slices(df_grouped, "Label", total_count)
+    df_grouped["Percentage"] = (df_grouped["Count"] / total_count * 100).round(2)
+    df_grouped = df_grouped.sort_values("Count", ascending=False).head(15)
+
 
     print(df_grouped)
 
@@ -717,7 +719,9 @@ def update_csd_pie_chart(immigrant_status, selected_country, grouping_level):
             y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
 
-    df_grouped = collapse_small_slices(df_grouped, "Label", None)
+    df_grouped = df_grouped.sort_values("Count", ascending=False).head(15)
+    total = df_grouped["Count"].sum()
+    df_grouped["Percentage"] = df_grouped["Count"] / total * 100
 
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort="-y", title=grouping_level),
