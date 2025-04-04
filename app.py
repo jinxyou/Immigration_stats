@@ -12,7 +12,6 @@ from flask_caching import Cache
 
 alt.data_transformers.enable("vegafusion")
 
-
 # === Load & Clean Canada GeoJSON ===
 gdf_csd = gpd.read_file("data/raw/geojson/lcsd000b21a_e_simplified_0.25percent.geojson")
 gdf_csd.crs = "EPSG:3347"
@@ -20,7 +19,7 @@ gdf_csd = gdf_csd.to_crs(epsg=4326)
 gdf_csd["geometry"] = gdf_csd["geometry"].buffer(0)
 gdf_csd = gdf_csd[~gdf_csd.geometry.is_empty & gdf_csd.geometry.notnull()].copy()
 gdf_csd.rename(columns={"CSDNAME": "NAME"}, inplace=True)
-csd_geojson=json.loads(gdf_csd.to_json())
+csd_geojson = json.loads(gdf_csd.to_json())
 
 gdf_cd = gpd.read_file("data/raw/geojson/lcd_000b21a_e_simplified_0.5percent.geojson")
 gdf_cd.crs = "EPSG:3347"
@@ -36,11 +35,6 @@ gdf_prov["geometry"] = gdf_prov["geometry"].buffer(0)
 gdf_prov = gdf_prov[~gdf_prov.geometry.is_empty & gdf_prov.geometry.notnull()].copy()
 gdf_prov.drop(columns=["NAME"], inplace=True, errors="ignore")
 gdf_prov.rename(columns={"PRENAME": "NAME"}, inplace=True)
-
-
-
-
-
 
 status_options = [
     "Total",
@@ -93,10 +87,8 @@ def melt_immigration_periods(df_raw):
     df_period = df_period.dropna(subset=["Count"])
     return df_period
 
-
 # === Load & Clean Immigration Data ===
 df_csd_raw = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_subdivisions.parquet")
-
 df_csd = df_csd_raw[["GEO", "DGUID", "Place of birth (290)", "Gender (3)", "Age (8D)",
                    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]",
                    "Immigrant status and period of immigration (11):Non-immigrants[2]",
@@ -121,11 +113,8 @@ df_csd = df_csd.melt(
 df_csd["Count"] = pd.to_numeric(df_csd["Count"], errors='coerce')
 df_csd = df_csd.dropna(subset=["Count"])
 
-
-
-# Add the same transformation to df_cd
+# Repeat similar processing for Census Divisions and Provinces.
 df_cd_raw = pd.read_parquet("data/processed/immigration_data/immigration_stats_census_divisions.parquet")
-
 df_cd = df_cd_raw[["GEO", "DGUID", "Place of birth (290)", "Gender (3)", "Age (8D)",
                "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]",
                "Immigrant status and period of immigration (11):Non-immigrants[2]",
@@ -150,17 +139,13 @@ df_cd = df_cd.melt(
 df_cd["Count"] = pd.to_numeric(df_cd["Count"], errors="coerce")
 df_cd = df_cd.dropna(subset=["Count"])
 
-
-# === Load & Clean Province Immigration Data ===
 df_prov_raw = pd.read_parquet("data/processed/immigration_data/immigration_stats_provinces.parquet")
-
 df_prov = df_prov_raw[["GEO", "DGUID", "Place of birth (290)", "Gender (3)", "Age (8D)",
                    "Immigrant status and period of immigration (11):Total - Immigrant status and period of immigration[1]",
                    "Immigrant status and period of immigration (11):Non-immigrants[2]",
                    "Immigrant status and period of immigration (11):Immigrants[3]",
                    "Immigrant status and period of immigration (11):Non-permanent residents[11]",
                    "Province", "Type"]]
-
 df_prov.rename(columns={
     "Place of birth (290)": "Birthplace",
     "Gender (3)": "Gender",
@@ -170,7 +155,6 @@ df_prov.rename(columns={
     "Immigrant status and period of immigration (11):Immigrants[3]": "Immigrants",
     "Immigrant status and period of immigration (11):Non-permanent residents[11]": "Non-permanent residents"
 }, inplace=True)
-
 df_prov = df_prov.melt(
     id_vars=["GEO", "DGUID", "Birthplace", "Province", "Type", "Gender", "Age"],
     value_vars=["Total", "Non-immigrants", "Immigrants", "Non-permanent residents"],
@@ -180,13 +164,28 @@ df_prov = df_prov.melt(
 df_prov["Count"] = pd.to_numeric(df_prov["Count"], errors="coerce")
 df_prov = df_prov.dropna(subset=["Count"])
 
+# === Create Combined DataFrames ===
+# For each geographic level we add a new column ("variable_type") so we can later choose between status and period rows.
+# For Census Subdivisions:
+df_csd_status = df_csd.copy()
+df_csd_status['variable_type'] = 'status'
+df_csd_period_new = melt_immigration_periods(df_csd_raw)
+df_csd_period_new['variable_type'] = 'period'
+df_csd_combined = pd.concat([df_csd_status, df_csd_period_new], ignore_index=True)
 
-df_csd_period = melt_immigration_periods(df_csd_raw)
-df_cd_period = melt_immigration_periods(df_cd_raw)
-df_prov_period = melt_immigration_periods(df_prov_raw)
+# For Census Divisions:
+df_cd_status = df_cd.copy()
+df_cd_status['variable_type'] = 'status'
+df_cd_period_new = melt_immigration_periods(df_cd_raw)
+df_cd_period_new['variable_type'] = 'period'
+df_cd_combined = pd.concat([df_cd_status, df_cd_period_new], ignore_index=True)
 
-
-
+# For Provinces:
+df_prov_status = df_prov.copy()
+df_prov_status['variable_type'] = 'status'
+df_prov_period_new = melt_immigration_periods(df_prov_raw)
+df_prov_period_new['variable_type'] = 'period'
+df_prov_combined = pd.concat([df_prov_status, df_prov_period_new], ignore_index=True)
 
 default_dguid = "ALL"
 
@@ -199,9 +198,6 @@ region_gdf["geometry"] = region_gdf["geometry"].buffer(0)
 
 continent_gdf = gpd.read_file("data/processed/geojson/continent_clean.geojson")
 continent_gdf["geometry"] = continent_gdf["geometry"].buffer(0)
-
-
-
 
 # === World Style Function ===
 classes = [0, 0.1, 0.5, 1, 2, 5, 10]
@@ -219,14 +215,13 @@ style_handle = assign("""function(feature, context){
 }""")
 style = dict(weight=1, opacity=1, color='white', dashArray='3', fillOpacity=0.5)
 
-
-
 # === Function to Build World GeoJSON from Selection ===
 def get_world_geojson(selected_dguid):
     if selected_dguid == "ALL":
-        df_filtered = df_csd.copy()
+        df_filtered = df_csd_combined[df_csd_combined["variable_type"] == 'status'].copy()
     else:
-        df_filtered = df_csd[df_csd["DGUID"] == selected_dguid]
+        df_filtered = df_csd_combined[(df_csd_combined["DGUID"] == selected_dguid) &
+                                      (df_csd_combined["variable_type"] == 'status')].copy()
 
     df_agg = df_filtered.groupby("Birthplace", as_index=False)["Count"].sum()
     match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
@@ -235,7 +230,6 @@ def get_world_geojson(selected_dguid):
     df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
 
     merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
-    # merged = merged[~merged["Count"].isna()]
     merged["Count"] = merged["Count"].fillna(0)
     merged["Percentage"] = merged["Percentage"].fillna(0)
     merged["tooltip"] = merged.apply(
@@ -248,26 +242,20 @@ def get_csd_geojson(selected_country):
     if not selected_country:
         return csd_geojson
 
-    # Total immigrants per CSD (from "Total – Place of birth" rows)
-    df_total = df_csd[df_csd["Birthplace"] == "Total – Place of birth"]
+    df_total = df_csd_combined[(df_csd_combined["Birthplace"] == "Total – Place of birth") &
+                               (df_csd_combined["variable_type"] == 'status')]
     df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-    # Immigrants from selected country per CSD
-    df_country = df_csd[df_csd["Birthplace"] == selected_country]
+    df_country = df_csd_combined[(df_csd_combined["Birthplace"] == selected_country) &
+                                 (df_csd_combined["variable_type"] == 'status')]
     df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
-    # Merge and compute percentage
     df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
-    # df_merged = df_merged[~df_merged["CountryCount"].isna()]
     df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
     df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
 
-    # Merge with spatial data
     merged = gdf_csd.merge(df_merged, on="DGUID", how="left")
-    # merged = merged[~merged["CountryCount"].isna()]
     merged["Percentage"] = merged["Percentage"].fillna(0)
-
-    # Tooltip display
     merged["tooltip"] = merged.apply(
         lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)" 
         if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)",
@@ -276,15 +264,11 @@ def get_csd_geojson(selected_country):
 
     return json.loads(merged.to_json())
 
-
-
-
 # === Initial World GeoJSON ===
 world_geojson = get_world_geojson(default_dguid)
 csd_geojson = get_csd_geojson(None)
 
 indent = "\u00A0\u00A0\u00A0"
-
 
 # === App Layout ===
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True)
@@ -292,8 +276,6 @@ cache = Cache(app.server, config={
     'CACHE_TYPE': 'filesystem',
     'CACHE_DIR': 'cache-dir'
 })
-
-
 
 app.layout = dbc.Container([
     dbc.Row([
@@ -320,7 +302,7 @@ app.layout = dbc.Container([
             dcc.Dropdown(
                 id="age-filter",
                 options=[{"label": a, "value": a} for a in age_options],
-                value=["Total - Age"],  # default selected
+                value=["Total - Age"],
                 multi=True,
                 clearable=False,
                 style={"marginBottom": "10px"}
@@ -355,10 +337,7 @@ app.layout = dbc.Container([
             zoom=5,
             style={'width': '100%', 'height': '600px'},
             id="bc-map"),
-
-            
         ], width=6),
-
         dbc.Col([
             html.Label("Select administrative level:"),
             dcc.Dropdown(
@@ -392,7 +371,6 @@ app.layout = dbc.Container([
             zoom=2,
             style={'width': '100%', 'height': '600px'},
             id="world-map"),
-            
         ], width=6)
     ]),
     dbc.Row([
@@ -403,6 +381,7 @@ app.layout = dbc.Container([
                 options=[
                     {"label": "Show total only", "value": "total"},
                     {"label": "Show gender breakdown", "value": "gender"},
+                    {"label": "Show age breakdown", "value": "age"},
                 ],
                 value="total",
                 inline=True,
@@ -425,9 +404,9 @@ app.layout = dbc.Container([
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="hovered-world-map", data=None),
     dcc.Store(id="hovered-canada-map", data=None),
-
-
 ], fluid=True)
+
+# ========= Callbacks =========
 
 @cache.memoize(timeout=60)
 @callback(
@@ -438,24 +417,17 @@ app.layout = dbc.Container([
     Input("admin-level", "value")
 )
 def filter_base_data(immigrant_status, gender_filter, age_filter, admin_level):
-    # Choose the correct DataFrame based on admin level.
     if admin_level == "CD":
-        df = df_cd
+        df = df_cd_combined[df_cd_combined['variable_type'] == 'status']
     elif admin_level == "Province":
-        df = df_prov
+        df = df_prov_combined[df_prov_combined['variable_type'] == 'status']
     else:
-        df = df_csd
+        df = df_csd_combined[df_csd_combined['variable_type'] == 'status']
 
-    # Apply the base filtering.
     filtered_df = df[
-        (df["ImmigrantStatus"] == immigrant_status) &
-        # (df["Gender"] == gender_filter) &
-        (df["Age"].isin(age_filter))
+        (df["ImmigrantStatus"] == immigrant_status)
     ]
-    # Return the filtered DataFrame as a JSON string.
     return filtered_df.to_json(date_format='iso', orient='split')
-
-
 
 @callback(
     Output("hovered-world-map", "data"),
@@ -464,7 +436,7 @@ def filter_base_data(immigrant_status, gender_filter, age_filter, admin_level):
 def update_hovered_region(feature):
     if not feature:
         return None
-    return feature["properties"].get("ADMIN")  # or NAME if you're using NAME
+    return feature["properties"].get("ADMIN")
 
 @callback(
     Output("hovered-canada-map", "data"),
@@ -473,10 +445,7 @@ def update_hovered_region(feature):
 def update_hovered_canada(feature):
     if not feature:
         return None
-    return feature["properties"].get("NAME")  # or use DGUID if that's your label
-
-
-
+    return feature["properties"].get("NAME")
 
 @callback(
     Output("csd-geojson", "data"),
@@ -488,14 +457,24 @@ def update_hovered_canada(feature):
 )
 def update_subdivision_geojson(immigrant_status, selected_country, admin_level, gender_filter, age_filter):
     if admin_level == "CSD":
-        # Existing logic for CSD level
         if not selected_country:
             return json.loads(gdf_csd.to_json())
-
-        df_total = df_csd[(df_csd["Birthplace"] == "Total – Place of birth") & (df_csd["ImmigrantStatus"] == immigrant_status) & (df_csd["Gender"] == gender_filter) & (df_csd["Age"].isin(age_filter))]
+        df_total = df_csd_combined[
+            (df_csd_combined["Birthplace"] == "Total – Place of birth") &
+            (df_csd_combined["ImmigrantStatus"] == immigrant_status) &
+            (df_csd_combined["Gender"] == gender_filter) &
+            (df_csd_combined["Age"].isin(age_filter)) &
+            (df_csd_combined["variable_type"] == 'status')
+        ]
         df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-        df_country = df_csd[(df_csd["Birthplace"] == selected_country) & (df_csd["ImmigrantStatus"] == immigrant_status) & (df_csd["Gender"] == gender_filter) & (df_csd["Age"].isin(age_filter))]
+        df_country = df_csd_combined[
+            (df_csd_combined["Birthplace"] == selected_country) &
+            (df_csd_combined["ImmigrantStatus"] == immigrant_status) &
+            (df_csd_combined["Gender"] == gender_filter) &
+            (df_csd_combined["Age"].isin(age_filter)) &
+            (df_csd_combined["variable_type"] == 'status')
+        ]
         df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
         df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
@@ -511,14 +490,24 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level, 
         return json.loads(merged.to_json())
 
     elif admin_level == "CD":
-        # New logic for CD level
         if not selected_country:
             return json.loads(gdf_cd.to_json())
-
-        df_total = df_cd[(df_cd["Birthplace"] == "Total – Place of birth") & (df_cd["ImmigrantStatus"] == immigrant_status) & (df_cd["Gender"] == gender_filter) & (df_cd["Age"].isin(age_filter))]
+        df_total = df_cd_combined[
+            (df_cd_combined["Birthplace"] == "Total – Place of birth") &
+            (df_cd_combined["ImmigrantStatus"] == immigrant_status) &
+            (df_cd_combined["Gender"] == gender_filter) &
+            (df_cd_combined["Age"].isin(age_filter)) &
+            (df_cd_combined["variable_type"] == 'status')
+        ]
         df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-        df_country = df_cd[(df_cd["Birthplace"] == selected_country) & (df_cd["ImmigrantStatus"] == immigrant_status) & (df_cd["Gender"] == gender_filter) & (df_cd["Age"].isin(age_filter))]
+        df_country = df_cd_combined[
+            (df_cd_combined["Birthplace"] == selected_country) &
+            (df_cd_combined["ImmigrantStatus"] == immigrant_status) &
+            (df_cd_combined["Gender"] == gender_filter) &
+            (df_cd_combined["Age"].isin(age_filter)) &
+            (df_cd_combined["variable_type"] == 'status')
+        ]
         df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
         df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
@@ -536,11 +525,22 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level, 
     elif admin_level == "Province":
         if not selected_country:
             return json.loads(gdf_prov.to_json())
-
-        df_total = df_prov[(df_prov["Birthplace"] == "Total – Place of birth") & (df_prov["ImmigrantStatus"] == immigrant_status) & (df_prov["Gender"] == gender_filter) & (df_prov["Age"].isin(age_filter))]
+        df_total = df_prov_combined[
+            (df_prov_combined["Birthplace"] == "Total – Place of birth") &
+            (df_prov_combined["ImmigrantStatus"] == immigrant_status) &
+            (df_prov_combined["Gender"] == gender_filter) &
+            (df_prov_combined["Age"].isin(age_filter)) &
+            (df_prov_combined["variable_type"] == 'status')
+        ]
         df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-        df_country = df_prov[(df_prov["Birthplace"] == selected_country) & (df_prov["ImmigrantStatus"] == immigrant_status) & (df_prov["Gender"] == gender_filter) & (df_prov["Age"].isin(age_filter))]
+        df_country = df_prov_combined[
+            (df_prov_combined["Birthplace"] == selected_country) &
+            (df_prov_combined["ImmigrantStatus"] == immigrant_status) &
+            (df_prov_combined["Gender"] == gender_filter) &
+            (df_prov_combined["Age"].isin(age_filter)) &
+            (df_prov_combined["variable_type"] == 'status')
+        ]
         df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
         df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
@@ -556,9 +556,7 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level, 
 
         return json.loads(merged.to_json())
 
-
-    return json.loads(gdf_csd.to_json())  # fallback
-
+    return json.loads(gdf_csd.to_json())
 
 @callback(
     Output("world-geojson", "data"),
@@ -568,16 +566,12 @@ def update_subdivision_geojson(immigrant_status, selected_country, admin_level, 
     Input("admin-level", "value")
 )
 def update_world_geojson(selected_dguid, pie_grouping, filtered_data_json, admin_level):
-    # Load the base filtered DataFrame.
     filtered_df = pd.read_json(filtered_data_json, orient='split')
     
-    # Further filter based on selected_dguid.
     if selected_dguid != "ALL":
         filtered_df = filtered_df[filtered_df["DGUID"] == selected_dguid]
     
-    # Group the data for the world map.
     df_agg = filtered_df.groupby("Birthplace", as_index=False)["Count"].sum()
-
 
     if pie_grouping == "Region":
         match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
@@ -607,7 +601,6 @@ def update_world_geojson(selected_dguid, pie_grouping, filtered_data_json, admin
         world_without_canada = world_gdf[world_gdf["ADMIN"]!="Inside Canada"]
         merged = world_without_canada.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
 
-    # merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     merged["Count"] = merged["Count"].fillna(0)
     merged["Percentage"] = merged["Percentage"].fillna(0)
     merged["tooltip"] = merged.apply(
@@ -615,7 +608,6 @@ def update_world_geojson(selected_dguid, pie_grouping, filtered_data_json, admin
     )
 
     return json.loads(merged.to_json())
-
 
 @callback(
     Output("selected-country", "data"),
@@ -625,7 +617,6 @@ def update_selected_country(feature):
     if not feature:
         return None
     return feature["properties"].get("ADMIN")
-
 
 @callback(
     Output("selected-dguid", "data"),
@@ -637,7 +628,6 @@ def update_selected_dguid(feature):
     dguid = feature["properties"].get("DGUID")
     return dguid if dguid else "ALL"
 
-
 @callback(
     Output("canada-map-title", "children"),
     Input("admin-level", "value"),
@@ -648,7 +638,6 @@ def update_canada_map_title(admin_level, selected_country):
         return f"Canada {admin_level} Map for Immigrants from {selected_country}"
     return "Canada Subdivisions Map"
 
-
 @callback(
     Output("world-map-title", "children"),
     Input("csd-geojson", "clickData")
@@ -657,32 +646,6 @@ def update_world_title(feature):
     if feature:
         return f"Immigrant Origins for {feature['properties']['NAME']}"
     return "Immigrant Origins for All Subdivisions"
-
-
-# def collapse_small_slices(df, label_col, total, count_col="Count", threshold=1):
-#     df = df.copy()
-#     if total is None:
-#         total = df[count_col].sum()
-#     df["Percentage"] = df[count_col] / total * 100
-#     print(total)
-
-#     major = df[df["Percentage"] >= threshold]
-#     minor = df[df["Percentage"] < threshold]
-
-#     if not minor.empty:
-#         other = pd.DataFrame({
-#             label_col: ["Other"],
-#             count_col: [minor[count_col].sum()],
-#             "Percentage": [minor["Percentage"].sum()]
-#         })
-#         df_final = pd.concat([major, other], ignore_index=True)
-#     else:
-#         df_final = major
-
-#     df_final["Percentage"] = df_final["Percentage"].round(2)
-#     return df_final
-
-
 
 @callback(
     Output("origin-pie-chart", "spec"),
@@ -700,12 +663,16 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
         return alt.Chart(pd.DataFrame({"label": ["No subdivision selected"], "count": [1]})).mark_bar().encode(
             x="label:N", y="count:Q").properties(title="No data").to_dict(format="vega")
 
-    df_selected = df_cd if admin_level == "CD" else df_prov if admin_level == "Province" else df_csd
+    if admin_level == "CD":
+        df_selected = df_cd_combined[df_cd_combined['variable_type'] == 'status']
+    elif admin_level == "Province":
+        df_selected = df_prov_combined[df_prov_combined['variable_type'] == 'status']
+    else:
+        df_selected = df_csd_combined[df_csd_combined['variable_type'] == 'status']
 
     base_filter = (
         (df_selected["DGUID"] == selected_dguid) &
         (df_selected["ImmigrantStatus"] == immigrant_status) &
-        (df_selected["Age"].isin(age_filter)) &
         (df_selected["Birthplace"] != "Total – Place of birth")
     )
 
@@ -738,6 +705,10 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     if gender_toggle == "gender":
         df_grouped = df_filtered.groupby([label_col, "Gender"], as_index=False)["Count"].sum()
         df_grouped = df_grouped[df_grouped[label_col].isin(label_order)]
+    elif gender_toggle == "age":
+        df_filtered = df_filtered[df_filtered["Gender"] == "Total - Gender"]
+        df_grouped = df_filtered.groupby([label_col, "Age"], as_index=False)["Count"].sum()
+        df_grouped = df_grouped[df_grouped[label_col].isin(label_order)]
     else:
         df_grouped = df_filtered.groupby(label_col, as_index=False)["Count"].sum()
         df_grouped = df_grouped[df_grouped[label_col].isin(label_order)]
@@ -755,10 +726,20 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
             color=alt.Color("Gender:N", legend=alt.Legend(title="Gender")),
             tooltip=["Label", "Gender", "Count"],
             opacity=alt.condition(
-            alt.datum.Label == hovered_label,
-            alt.value(1.0),
-            alt.value(0.3)
-        ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
+                alt.datum.Label == hovered_label,
+                alt.value(1.0),
+                alt.value(0.3)
+            ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
+        )
+    elif gender_toggle == "age":
+        chart = alt.Chart(df_grouped).mark_bar().encode(
+            x=alt.X("Label:N", sort=label_order),
+            y=alt.Y("Count:Q", stack="zero"),
+            color=alt.Color("Age:N", title="Age"),
+            tooltip=["Label", "Age", "Count"],
+            opacity=alt.condition(
+                alt.datum.Label == hovered_label, alt.value(1.0), alt.value(0.3)
+            ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
         )
     else:
         chart = alt.Chart(df_grouped).mark_bar().encode(
@@ -766,18 +747,13 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
             y=alt.Y("Count:Q"),
             tooltip=["Label", "Count"],
             opacity=alt.condition(
-            alt.datum.Label == hovered_label,
-            alt.value(1.0),
-            alt.value(0.3)
-        ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
+                alt.datum.Label == hovered_label,
+                alt.value(1.0),
+                alt.value(0.3)
+            ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
         )
 
     return chart.to_dict(format="vega")
-
-
-
-
-
 
 @callback(
     Output("csd-pie-chart", "spec"),
@@ -812,6 +788,9 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_
     if gender_toggle == "gender":
         df_country = df_country[df_country["Gender"].isin(["Men+", "Women+"])]
         df_grouped = df_country[df_country[group_col].isin(label_order)].groupby([group_col, "Gender"], as_index=False)["Count"].sum()
+    elif gender_toggle == "age":
+        df_country = df_country[df_country["Gender"] == "Total - Gender"]
+        df_grouped = df_country[df_country[group_col].isin(label_order)].groupby([group_col, "Age"], as_index=False)["Count"].sum()
     else:
         df_country = df_country[df_country["Gender"] == "Total - Gender"]
         df_grouped = df_country[df_country[group_col].isin(label_order)].groupby(group_col, as_index=False)["Count"].sum()
@@ -830,6 +809,13 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_
             color=alt.Color("Gender:N", legend=alt.Legend(title="Gender")),
             tooltip=["Label", "Gender", "Count"]
         )
+    elif gender_toggle == "age":
+        chart = alt.Chart(df_grouped).mark_bar().encode(
+            x=alt.X("Label:N", sort=label_order, title=admin_level),
+            y=alt.Y("Count:Q", stack="zero", title="Number of Immigrants"),
+            color=alt.Color("Age:N", title="Age"),
+            tooltip=["Label", "Age", "Count"]
+        )
     else:
         chart = alt.Chart(df_grouped).mark_bar().encode(
             x=alt.X("Label:N", sort=label_order, title=admin_level),
@@ -839,109 +825,90 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_
 
     return chart.to_dict(format="vega")
 
+# Helper function for line charts.
+def make_line_chart(df, group_col):
+    if df.empty:
+        empty_df = pd.DataFrame({
+            "Period": ["No Data"],
+            "Count": [0]
+        })
+        return alt.Chart(empty_df).mark_text(align="center", baseline="middle", fontSize=15).encode(
+            text=alt.value("No data available")
+        ).properties(height=200).to_dict(format="vega")
 
+    base = alt.Chart(df).mark_line(point=True).encode(
+        x=alt.X("Period:N", title="Immigration Period"),
+        y=alt.Y("Count:Q", title="Number of Immigrants")
+    )
 
+    if group_col == "Gender":
+        base = base.encode(color=alt.Color("Gender:N", title="Gender"), tooltip=["Period", "Gender", "Count"])
+    elif group_col == "Age":
+        base = base.encode(color=alt.Color("Age:N", title="Age Group"), tooltip=["Period", "Age", "Count"])
+    else:
+        base = base.encode(tooltip=["Period", "Count"])
+
+    return base.to_dict(format="vega")
 
 @callback(
     Output("canada-line-chart", "spec"),
     Input("selected-country", "data"),
-    Input("filtered-data", "data"),
-    Input("admin-level", "value"),
     Input("gender-toggle", "value")
 )
-def update_canada_line_chart(selected_country, filtered_data_json, admin_level, gender_toggle):
+def update_canada_line_chart(selected_country, toggle):
     if not selected_country:
-        return alt.Chart(pd.DataFrame({"Period": ["None"], "Count": [0]})).mark_line().encode(
-            x="Period:N", y="Count:Q"
-        ).properties(title="Select a country").to_dict(format="vega")
+        return make_line_chart(pd.DataFrame(), None)
+    # Use only period rows for the line chart
+    df = df_csd_combined[(df_csd_combined["Birthplace"] == selected_country) &
+                         (df_csd_combined["variable_type"] == 'period')].copy()
 
-    df_filtered = {
-        "CSD": df_csd_period,
-        "CD": df_cd_period,
-        "Province": df_prov_period
-    }[admin_level]
-
-    df_country = df_filtered[df_filtered["Birthplace"] == selected_country].copy()
-
-    # Set proper period sorting
-    period_order = ["Before 1980", "1980 to 1990", "1991 to 2000", "2001 to 2010",
-                    "2011 to 2021", "2011 to 2015", "2016 to 2021"]
-    df_country["Period"] = pd.Categorical(df_country["Period"], categories=period_order, ordered=True)
-
-    if gender_toggle == "gender":
-        df_grouped = df_country[df_country["Gender"].isin(["Men+", "Women+"])]
-        df_grouped = df_grouped.groupby(["Period", "Gender"], as_index=False)["Count"].sum()
-        chart = alt.Chart(df_grouped).mark_line(point=True).encode(
-            x=alt.X("Period:N", title="Immigration Period", sort=period_order),
-            y=alt.Y("Count:Q", title="Number of Immigrants"),
-            color=alt.Color("Gender:N", legend=alt.Legend(title="Gender")),
-            tooltip=["Period", "Gender", "Count"]
-        )
+    if toggle == "gender":
+        df = df[df["Gender"].isin(["Men+", "Women+"])]
+        grouped = df.groupby(["Period", "Gender"], as_index=False)["Count"].sum()
+        return make_line_chart(grouped, "Gender")
+    elif toggle == "age":
+        df = df[df["Gender"] == "Total - Gender"]
+        grouped = df.groupby(["Period", "Age"], as_index=False)["Count"].sum()
+        return make_line_chart(grouped, "Age")
     else:
-        df_grouped = df_country[df_country["Gender"] == "Total - Gender"]
-        df_grouped = df_grouped.groupby("Period", as_index=False)["Count"].sum()
-        chart = alt.Chart(df_grouped).mark_line(point=True).encode(
-            x=alt.X("Period:N", title="Immigration Period", sort=period_order),
-            y=alt.Y("Count:Q", title="Number of Immigrants"),
-            tooltip=["Period", "Count"]
-        )
-
-    return chart.to_dict(format="vega")
-
-
-
+        df = df[df["Gender"] == "Total - Gender"]
+        grouped = df.groupby("Period", as_index=False)["Count"].sum()
+        return make_line_chart(grouped, None)
 
 @callback(
     Output("world-line-chart", "spec"),
     Input("selected-dguid", "data"),
-    Input("filtered-data", "data"),
     Input("admin-level", "value"),
     Input("gender-toggle", "value")
 )
-def update_world_line_chart(selected_dguid, filtered_data_json, admin_level, gender_toggle):
-    if not selected_dguid or selected_dguid == "ALL":
-        return alt.Chart(pd.DataFrame({"Period": ["None"], "Count": [0]})).mark_line().encode(
-            x="Period:N", y="Count:Q"
-        ).properties(title="Select a Canadian subdivision").to_dict(format="vega")
+def update_world_line_chart(selected_dguid, admin_level, toggle):
+    if selected_dguid == "ALL":
+        return make_line_chart(pd.DataFrame(), None)
 
-    df_filtered = {
-        "CSD": df_csd_period,
-        "CD": df_cd_period,
-        "Province": df_prov_period
-    }[admin_level]
-
-    df_dguid = df_filtered[df_filtered["DGUID"] == selected_dguid].copy()
-
-    # Set order of periods
-    period_order = ["Before 1980", "1980 to 1990", "1991 to 2000", "2001 to 2010",
-                    "2011 to 2021", "2011 to 2015", "2016 to 2021"]
-    df_dguid["Period"] = pd.Categorical(df_dguid["Period"], categories=period_order, ordered=True)
-
-    if gender_toggle == "gender":
-        df_grouped = df_dguid[df_dguid["Gender"].isin(["Men+", "Women+"])]
-        df_grouped = df_grouped.groupby(["Period", "Gender"], as_index=False)["Count"].sum()
-        chart = alt.Chart(df_grouped).mark_line(point=True).encode(
-            x=alt.X("Period:N", title="Immigration Period", sort=period_order),
-            y=alt.Y("Count:Q", title="Number of Immigrants"),
-            color=alt.Color("Gender:N", legend=alt.Legend(title="Gender")),
-            tooltip=["Period", "Gender", "Count"]
-        )
+    if admin_level == "CD":
+        df_all = df_cd_combined
+    elif admin_level == "Province":
+        df_all = df_prov_combined
     else:
-        df_grouped = df_dguid[df_dguid["Gender"] == "Total - Gender"]
-        df_grouped = df_grouped.groupby("Period", as_index=False)["Count"].sum()
-        chart = alt.Chart(df_grouped).mark_line(point=True).encode(
-            x=alt.X("Period:N", title="Immigration Period", sort=period_order),
-            y=alt.Y("Count:Q", title="Number of Immigrants"),
-            tooltip=["Period", "Count"]
-        )
+        df_all = df_csd_combined
 
-    return chart.to_dict(format="vega")
+    # Use period rows for the line chart
+    df = df_all[(df_all["DGUID"] == selected_dguid) &
+                (df_all["Birthplace"] == "Total – Place of birth") &
+                (df_all["variable_type"] == 'period')]
 
-
-
-
-
-
+    if toggle == "gender":
+        df = df[df["Gender"].isin(["Men+", "Women+"])]
+        grouped = df.groupby(["Period", "Gender"], as_index=False)["Count"].sum()
+        return make_line_chart(grouped, "Gender")
+    elif toggle == "age":
+        df = df[df["Gender"] == "Total - Gender"]
+        grouped = df.groupby(["Period", "Age"], as_index=False)["Count"].sum()
+        return make_line_chart(grouped, "Age")
+    else:
+        df = df[df["Gender"] == "Total - Gender"]
+        grouped = df.groupby("Period", as_index=False)["Count"].sum()
+        return make_line_chart(grouped, None)
 
 # === Run App ===
 if __name__ == '__main__':
