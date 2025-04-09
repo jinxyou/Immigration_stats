@@ -505,12 +505,16 @@ def update_subdivision_geojson(selected_country, admin_level):
     if not selected_country:
         return json.loads(gdf.to_json())
 
-    df_total = df[df["Birthplace"] == "Total – Place of birth"][["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
-    df_country = df[df["Birthplace"] == selected_country][["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
+    df_total = df[df["Birthplace"] == "Total – Place of birth"].groupby("DGUID", as_index=False)["Count"].sum()
+    df_total.rename(columns={"Count": "TotalCount"}, inplace=True)
+
+    df_country = df[df["Birthplace"] == selected_country].groupby("DGUID", as_index=False)["Count"].sum()
+    df_country.rename(columns={"Count": "CountryCount"}, inplace=True)
 
     df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
     df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
     df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
+
 
     merged = gdf.merge(df_merged, on="DGUID", how="left")
     merged["Percentage"] = merged["Percentage"].fillna(0)
@@ -518,6 +522,7 @@ def update_subdivision_geojson(selected_country, admin_level):
         lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
         if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1
     )
+    print(merged)
 
     return json.loads(merged.to_json())
 
