@@ -436,7 +436,7 @@ app.layout = dbc.Container([
     ]),
 
 
-    dcc.Store(id="filtered-data"),
+    # dcc.Store(id="filtered-data"),
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="hovered-world-map", data=None),
@@ -445,24 +445,24 @@ app.layout = dbc.Container([
 
 # ========= Callbacks =========
 
-@cache.memoize(timeout=60)
-@callback(
-    Output("filtered-data", "data"),
-    Input("immigrant-status", "value"),
-    Input("admin-level", "value")
-)
-def filter_base_data(immigrant_status, admin_level):
-    if admin_level == "CD":
-        df = df_cd_combined[df_cd_combined['variable_type'] == 'status']
-    elif admin_level == "Province":
-        df = df_prov_combined[df_prov_combined['variable_type'] == 'status']
-    else:
-        df = df_csd_combined[df_csd_combined['variable_type'] == 'status']
+# @cache.memoize(timeout=60)
+# @callback(
+#     Output("filtered-data", "data"),
+#     Input("immigrant-status", "value"),
+#     Input("admin-level", "value")
+# )
+# def filter_base_data(immigrant_status, admin_level):
+#     if admin_level == "CD":
+#         df = df_cd_combined[df_cd_combined['variable_type'] == 'status']
+#     elif admin_level == "Province":
+#         df = df_prov_combined[df_prov_combined['variable_type'] == 'status']
+#     else:
+#         df = df_csd_combined[df_csd_combined['variable_type'] == 'status']
 
-    filtered_df = df[
-        (df["ImmigrantStatus"] == immigrant_status)
-    ]
-    return filtered_df.to_json(date_format='iso', orient='split')
+#     filtered_df = df[
+#         (df["ImmigrantStatus"] == immigrant_status)
+#     ]
+#     return filtered_df.to_json(date_format='iso', orient='split')
 
 @callback(
     Output("hovered-world-map", "data"),
