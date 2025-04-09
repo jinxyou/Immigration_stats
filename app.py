@@ -468,106 +468,47 @@ def update_hovered_canada(feature):
 )
 def update_subdivision_geojson(immigrant_status, selected_country, admin_level):
     if admin_level == "CSD":
-        if not selected_country:
-            return json.loads(gdf_csd.to_json())
-        df_total = df_csd_combined[
-            (df_csd_combined["Birthplace"] == "Total – Place of birth") &
-            (df_csd_combined["ImmigrantStatus"] == immigrant_status) &
-            # (df_csd_combined["Gender"] == gender_filter) &
-            # (df_csd_combined["Age"].isin(age_filter)) &
-            (df_csd_combined["variable_type"] == 'status')
-        ]
-        df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
-
-        df_country = df_csd_combined[
-            (df_csd_combined["Birthplace"] == selected_country) &
-            (df_csd_combined["ImmigrantStatus"] == immigrant_status) &
-            # (df_csd_combined["Gender"] == gender_filter) &
-            # (df_csd_combined["Age"].isin(age_filter)) &
-            (df_csd_combined["variable_type"] == 'status')
-        ]
-        df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
-
-        df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
-        df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
-        df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
-
-        merged = gdf_csd.merge(df_merged, on="DGUID", how="left")
-        merged["Percentage"] = merged["Percentage"].fillna(0)
-        merged["tooltip"] = merged.apply(
-            lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
-            if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1)
-
-        return json.loads(merged.to_json())
-
+        gdf = gdf_csd
+        df = df_csd_combined
     elif admin_level == "CD":
-        if not selected_country:
-            return json.loads(gdf_cd.to_json())
-        df_total = df_cd_combined[
-            (df_cd_combined["Birthplace"] == "Total – Place of birth") &
-            (df_cd_combined["ImmigrantStatus"] == immigrant_status) &
-            # (df_cd_combined["Gender"] == gender_filter) &
-            # (df_cd_combined["Age"].isin(age_filter)) &
-            (df_cd_combined["variable_type"] == 'status')
-        ]
-        df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
-
-        df_country = df_cd_combined[
-            (df_cd_combined["Birthplace"] == selected_country) &
-            (df_cd_combined["ImmigrantStatus"] == immigrant_status) &
-            # (df_cd_combined["Gender"] == gender_filter) &
-            # (df_cd_combined["Age"].isin(age_filter)) &
-            (df_cd_combined["variable_type"] == 'status')
-        ]
-        df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
-
-        df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
-        df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
-        df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
-
-        merged = gdf_cd.merge(df_merged, on="DGUID", how="left")
-        merged["Percentage"] = merged["Percentage"].fillna(0)
-        merged["tooltip"] = merged.apply(
-            lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
-            if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1)
-
-        return json.loads(merged.to_json())
-    
+        gdf = gdf_cd
+        df = df_cd_combined
     elif admin_level == "Province":
-        if not selected_country:
-            return json.loads(gdf_prov.to_json())
-        df_total = df_prov_combined[
-            (df_prov_combined["Birthplace"] == "Total – Place of birth") &
-            (df_prov_combined["ImmigrantStatus"] == immigrant_status) &
-            # (df_prov_combined["Gender"] == gender_filter) &
-            # (df_prov_combined["Age"].isin(age_filter)) &
-            (df_prov_combined["variable_type"] == 'status')
-        ]
-        df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
+        gdf = gdf_prov
+        df = df_prov_combined
+    else:
+        return json.loads(gdf_csd.to_json())  # fallback
 
-        df_country = df_prov_combined[
-            (df_prov_combined["Birthplace"] == selected_country) &
-            (df_prov_combined["ImmigrantStatus"] == immigrant_status) &
-            # (df_prov_combined["Gender"] == gender_filter) &
-            # (df_prov_combined["Age"].isin(age_filter)) &
-            (df_prov_combined["variable_type"] == 'status')
-        ]
-        df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
+    if not selected_country:
+        return json.loads(gdf.to_json())
 
-        df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
-        df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
-        df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
+    # Aggregate by DGUID to avoid duplicated geometries
+    df_total = df[
+        (df["Birthplace"] == "Total – Place of birth") &
+        (df["ImmigrantStatus"] == immigrant_status) &
+        (df["variable_type"] == "status")
+    ].groupby("DGUID", as_index=False)["Count"].sum().rename(columns={"Count": "TotalCount"})
 
-        merged = gdf_prov.merge(df_merged, on="DGUID", how="left")
-        merged["Percentage"] = merged["Percentage"].fillna(0)
-        merged["tooltip"] = merged.apply(
-            lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
-            if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1
-        )
+    df_country = df[
+        (df["Birthplace"] == selected_country) &
+        (df["ImmigrantStatus"] == immigrant_status) &
+        (df["variable_type"] == "status")
+    ].groupby("DGUID", as_index=False)["Count"].sum().rename(columns={"Count": "CountryCount"})
 
-        return json.loads(merged.to_json())
+    df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
+    df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
+    df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
 
-    return json.loads(gdf_csd.to_json())
+    merged = gdf.merge(df_merged, on="DGUID", how="left")
+    merged["Percentage"] = merged["Percentage"].fillna(0)
+    merged["tooltip"] = merged.apply(
+        lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
+        if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)",
+        axis=1
+    )
+
+    return json.loads(merged.to_json())
+
 
 @callback(
     Output("world-geojson", "data"),
