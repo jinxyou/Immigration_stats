@@ -375,22 +375,6 @@ app.layout = dbc.Container([
     ]),
     dbc.Row([
         dbc.Col([
-            html.Label("Toggle Gender Breakdown:"),
-            dcc.RadioItems(
-                id="gender-toggle",
-                options=[
-                    {"label": "Show total only", "value": "total"},
-                    {"label": "Show gender breakdown", "value": "gender"},
-                    {"label": "Show age breakdown", "value": "age"},
-                ],
-                value="total",
-                inline=True,
-                style={"marginBottom": "15px"}
-            ),
-        ], width=12),
-    ]),
-    dbc.Row([
-        dbc.Col([
             dvc.Vega(id="csd-pie-chart"),
         ], width=3),
         dbc.Col([dvc.Vega(id="canada-line-chart")], width=3),
@@ -660,109 +644,56 @@ def update_world_title(feature):
 
 @callback(
     Output("origin-pie-chart", "spec"),
-    Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
     Input("pie-grouping", "value"),
-    Input("admin-level", "value"),
     Input("hovered-world-map", "data"),
-    Input("gender-toggle", "value")
+    Input("filtered-data", "data")
 )
-def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, admin_level, hovered_label, gender_toggle):
+def update_world_pie_chart(selected_dguid, grouping_level, hovered_label, filtered_data_json):
     if selected_dguid == "ALL":
-        return alt.Chart(pd.DataFrame({"label": ["No subdivision selected"], "count": [1]})).mark_bar().encode(
-            x="label:N", y="count:Q").properties(title="No data").to_dict(format="vega")
+        return alt.Chart(pd.DataFrame({"label": ["No subdivision selected"], "count": [1]})) \
+            .mark_bar().encode(x="label:N", y="count:Q") \
+            .properties(title="No data").to_dict(format="vega")
 
-    if admin_level == "CD":
-        df_selected = df_cd_combined[df_cd_combined['variable_type'] == 'status']
-    elif admin_level == "Province":
-        df_selected = df_prov_combined[df_prov_combined['variable_type'] == 'status']
-    else:
-        df_selected = df_csd_combined[df_csd_combined['variable_type'] == 'status']
+    df = pd.read_json(filtered_data_json, orient='split')
 
-    base_filter = (
-        (df_selected["DGUID"] == selected_dguid) &
-        (df_selected["ImmigrantStatus"] == immigrant_status) &
-        (df_selected["Birthplace"] != "Total – Place of birth")
-    )
+    df = df[
+        (df["DGUID"] == selected_dguid) &
+        (df["Gender"] == "Total - Gender") &
+        (df["Birthplace"] != "Total – Place of birth")
+    ]
 
     if grouping_level == "Country (including Canada)":
-        df_selected = df_selected[df_selected["Type"].isin(["Country", "Inside Canada"])]
+        df = df[df["Type"].isin(["Country", "Inside Canada"])]
     elif grouping_level == "Country (excluding Canada)":
-        df_selected = df_selected[df_selected["Type"] == "Country"]
+        df = df[df["Type"] == "Country"]
     elif grouping_level == "Inside Canada (Provinces)":
-        df_selected = df_selected[df_selected["Type"] == "Province"]
+        df = df[df["Type"] == "Province"]
     elif grouping_level in ["Region", "Continent"]:
-        df_selected = df_selected[(df_selected["Type"] == grouping_level) | (df_selected["Birthplace"] == "Oceania")]
+        df = df[(df["Type"] == grouping_level) | (df["Birthplace"] == "Oceania")]
 
-    if gender_toggle == "gender":
-        df_filtered = df_selected[base_filter & df_selected["Gender"].isin(["Men+", "Women+"])]
-    else:
-        df_filtered = df_selected[base_filter & (df_selected["Gender"] == "Total - Gender")]
+    if df.empty:
+        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})) \
+            .mark_bar().encode(x="label:N", y="count:Q") \
+            .properties(title="No data").to_dict(format="vega")
 
-    label_col = "Birthplace"
-    df_totals = df_selected[
-        (df_selected["DGUID"] == selected_dguid) &
-        (df_selected["ImmigrantStatus"] == immigrant_status) &
-        (df_selected["Gender"] == "Total - Gender") &
-        # (df_selected["Age"].isin(age_filter)) &
-        (df_selected["Birthplace"] != "Total – Place of birth")
-    ].groupby(label_col, as_index=False)["Count"].sum().rename(columns={"Count": "TotalCount"})
+    df_agg = df.groupby("Birthplace", as_index=False)["Count"].sum()
+    df_agg = df_agg.sort_values("Count", ascending=False).head(15)
+    df_agg.rename(columns={"Birthplace": "Label"}, inplace=True)
 
-    df_totals = df_totals.sort_values("TotalCount", ascending=False).head(15)
-    label_order = df_totals[label_col].tolist()
-
-    if gender_toggle == "gender":
-        df_grouped = df_filtered.groupby([label_col, "Gender"], as_index=False)["Count"].sum()
-        df_grouped = df_grouped[df_grouped[label_col].isin(label_order)]
-    elif gender_toggle == "age":
-        df_filtered = df_filtered[df_filtered["Gender"] == "Total - Gender"]
-        df_grouped = df_filtered.groupby([label_col, "Age"], as_index=False)["Count"].sum()
-        df_grouped = df_grouped[df_grouped[label_col].isin(label_order)]
-    else:
-        df_grouped = df_filtered.groupby(label_col, as_index=False)["Count"].sum()
-        df_grouped = df_grouped[df_grouped[label_col].isin(label_order)]
-
-    df_grouped.rename(columns={label_col: "Label"}, inplace=True)
-
-    if df_grouped.empty:
-        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_bar().encode(
-            x="label:N", y="count:Q").properties(title="No data").to_dict(format="vega")
-
-    if gender_toggle == "gender":
-        chart = alt.Chart(df_grouped).mark_bar().encode(
-            x=alt.X("Label:N", sort=label_order),
-            y=alt.Y("Count:Q", stack="zero"),
-            color=alt.Color("Gender:N", legend=alt.Legend(title="Gender")),
-            tooltip=["Label", "Gender", "Count"],
-            opacity=alt.condition(
-                alt.datum.Label == hovered_label,
-                alt.value(1.0),
-                alt.value(0.3)
-            ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
-        )
-    elif gender_toggle == "age":
-        chart = alt.Chart(df_grouped).mark_bar().encode(
-            x=alt.X("Label:N", sort=label_order),
-            y=alt.Y("Count:Q", stack="zero"),
-            color=alt.Color("Age:N", title="Age"),
-            tooltip=["Label", "Age", "Count"],
-            opacity=alt.condition(
-                alt.datum.Label == hovered_label, alt.value(1.0), alt.value(0.3)
-            ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
-        )
-    else:
-        chart = alt.Chart(df_grouped).mark_bar().encode(
-            x=alt.X("Label:N", sort=label_order),
-            y=alt.Y("Count:Q"),
-            tooltip=["Label", "Count"],
-            opacity=alt.condition(
-                alt.datum.Label == hovered_label,
-                alt.value(1.0),
-                alt.value(0.3)
-            ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
-        )
+    chart = alt.Chart(df_agg).mark_bar().encode(
+        x=alt.X("Label:N", sort=df_agg["Label"].tolist(), title="Birthplace"),
+        y=alt.Y("Count:Q", title="Number of Immigrants"),
+        tooltip=["Label", "Count"],
+        opacity=alt.condition(
+            alt.datum.Label == hovered_label,
+            alt.value(1.0),
+            alt.value(0.3)
+        ) if hovered_label in df_agg["Label"].values else alt.value(1.0)
+    ).properties(title="Top Birthplaces")
 
     return chart.to_dict(format="vega")
+
 
 @callback(
     Output("csd-pie-chart", "spec"),
@@ -770,9 +701,8 @@ def update_world_pie_chart(immigrant_status, selected_dguid, grouping_level, adm
     Input("admin-level", "value"),
     Input("hovered-canada-map", "data"),
     Input("filtered-data", "data"),
-    Input("gender-toggle", "value")
 )
-def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_data_json, gender_toggle):
+def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_data_json):
     if not selected_country:
         return alt.Chart(pd.DataFrame({"label": ["No country selected"], "count": [1]})).mark_bar().encode(
             x="label:N", y="count:Q"
@@ -794,15 +724,8 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_
     df_totals = df_totals.sort_values("Count", ascending=False).head(15)
     label_order = df_totals[group_col].tolist()
 
-    if gender_toggle == "gender":
-        df_country = df_country[df_country["Gender"].isin(["Men+", "Women+"])]
-        df_grouped = df_country[df_country[group_col].isin(label_order)].groupby([group_col, "Gender"], as_index=False)["Count"].sum()
-    elif gender_toggle == "age":
-        df_country = df_country[df_country["Gender"] == "Total - Gender"]
-        df_grouped = df_country[df_country[group_col].isin(label_order)].groupby([group_col, "Age"], as_index=False)["Count"].sum()
-    else:
-        df_country = df_country[df_country["Gender"] == "Total - Gender"]
-        df_grouped = df_country[df_country[group_col].isin(label_order)].groupby(group_col, as_index=False)["Count"].sum()
+    df_country = df_country[df_country["Gender"] == "Total - Gender"]
+    df_grouped = df_country[df_country[group_col].isin(label_order)].groupby(group_col, as_index=False)["Count"].sum()
 
     df_grouped.rename(columns={group_col: "Label"}, inplace=True)
 
@@ -811,26 +734,11 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label, filtered_
             x="label:N", y="count:Q"
         ).properties(title="No data").to_dict(format="vega")
 
-    if gender_toggle == "gender":
-        chart = alt.Chart(df_grouped).mark_bar().encode(
-            x=alt.X("Label:N", sort=label_order, title=admin_level),
-            y=alt.Y("Count:Q", stack="zero", title="Number of Immigrants"),
-            color=alt.Color("Gender:N", legend=alt.Legend(title="Gender")),
-            tooltip=["Label", "Gender", "Count"]
-        )
-    elif gender_toggle == "age":
-        chart = alt.Chart(df_grouped).mark_bar().encode(
-            x=alt.X("Label:N", sort=label_order, title=admin_level),
-            y=alt.Y("Count:Q", stack="zero", title="Number of Immigrants"),
-            color=alt.Color("Age:N", title="Age"),
-            tooltip=["Label", "Age", "Count"]
-        )
-    else:
-        chart = alt.Chart(df_grouped).mark_bar().encode(
-            x=alt.X("Label:N", sort=label_order, title=admin_level),
-            y=alt.Y("Count:Q", title="Number of Immigrants"),
-            tooltip=["Label", "Count"]
-        )
+    chart = alt.Chart(df_grouped).mark_bar().encode(
+        x=alt.X("Label:N", sort=label_order, title=admin_level),
+        y=alt.Y("Count:Q", title="Number of Immigrants"),
+        tooltip=["Label", "Count"]
+    )
 
     return chart.to_dict(format="vega")
 
@@ -862,35 +770,24 @@ def make_line_chart(df, group_col):
 @callback(
     Output("canada-line-chart", "spec"),
     Input("selected-country", "data"),
-    Input("gender-toggle", "value")
 )
-def update_canada_line_chart(selected_country, toggle):
+def update_canada_line_chart(selected_country):
     if not selected_country:
         return make_line_chart(pd.DataFrame(), None)
     # Use only period rows for the line chart
     df = df_csd_combined[(df_csd_combined["Birthplace"] == selected_country) &
                          (df_csd_combined["variable_type"] == 'period')].copy()
 
-    if toggle == "gender":
-        df = df[df["Gender"].isin(["Men+", "Women+"])]
-        grouped = df.groupby(["Period", "Gender"], as_index=False)["Count"].sum()
-        return make_line_chart(grouped, "Gender")
-    elif toggle == "age":
-        df = df[df["Gender"] == "Total - Gender"]
-        grouped = df.groupby(["Period", "Age"], as_index=False)["Count"].sum()
-        return make_line_chart(grouped, "Age")
-    else:
-        df = df[df["Gender"] == "Total - Gender"]
-        grouped = df.groupby("Period", as_index=False)["Count"].sum()
-        return make_line_chart(grouped, None)
+    df = df[df["Gender"] == "Total - Gender"]
+    grouped = df.groupby("Period", as_index=False)["Count"].sum()
+    return make_line_chart(grouped, None)
 
 @callback(
     Output("world-line-chart", "spec"),
     Input("selected-dguid", "data"),
     Input("admin-level", "value"),
-    Input("gender-toggle", "value")
 )
-def update_world_line_chart(selected_dguid, admin_level, toggle):
+def update_world_line_chart(selected_dguid, admin_level):
     if selected_dguid == "ALL":
         return make_line_chart(pd.DataFrame(), None)
 
@@ -906,18 +803,9 @@ def update_world_line_chart(selected_dguid, admin_level, toggle):
                 (df_all["Birthplace"] == "Total – Place of birth") &
                 (df_all["variable_type"] == 'period')]
 
-    if toggle == "gender":
-        df = df[df["Gender"].isin(["Men+", "Women+"])]
-        grouped = df.groupby(["Period", "Gender"], as_index=False)["Count"].sum()
-        return make_line_chart(grouped, "Gender")
-    elif toggle == "age":
-        df = df[df["Gender"] == "Total - Gender"]
-        grouped = df.groupby(["Period", "Age"], as_index=False)["Count"].sum()
-        return make_line_chart(grouped, "Age")
-    else:
-        df = df[df["Gender"] == "Total - Gender"]
-        grouped = df.groupby("Period", as_index=False)["Count"].sum()
-        return make_line_chart(grouped, None)
+    df = df[df["Gender"] == "Total - Gender"]
+    grouped = df.groupby("Period", as_index=False)["Count"].sum()
+    return make_line_chart(grouped, None)
 
 @callback(
     Output("intersection-gender-chart", "spec"),
