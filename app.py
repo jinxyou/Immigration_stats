@@ -230,6 +230,7 @@ default_dguid = "ALL"
 # === Load & Clean World Countries GeoJSON ===
 world_gdf = gpd.read_file("data/processed/geojson/world_countries_clean.geojson")
 world_gdf["geometry"] = world_gdf["geometry"].buffer(0)
+print(world_gdf)
 
 region_gdf = gpd.read_file("data/processed/geojson/region_clean.geojson")
 region_gdf["geometry"] = region_gdf["geometry"].buffer(0)
@@ -325,144 +326,124 @@ app.layout = dbc.Container([
                 value="Total",
                 clearable=False,
                 style={"marginBottom": "10px"}
-        )], width=4),
-        # dbc.Col([
-        #     html.Label("Gender:"),
-        #     dcc.Dropdown(
-        #         id="gender-filter",
-        #         options=[{"label": g, "value": g} for g in gender_options],
-        #         value="Total - Gender",
-        #         clearable=False,
-        #         style={"marginBottom": "10px"}
-        #     )], width=4),
-        # dbc.Col([
-        #     html.Label("Age:"),
-        #     dcc.Dropdown(
-        #         id="age-filter",
-        #         options=[{"label": a, "value": a} for a in age_options],
-        #         value=["Total - Age"],
-        #         multi=True,
-        #         clearable=False,
-        #         style={"marginBottom": "10px"}
-        #     )], width=4),
-    ]),
-    dbc.Row([
-        dbc.Col([
-            html.Label("Select administrative level:"),
-            dcc.Dropdown(
-                id="admin-level",
-                options=[
-                    {"label": "Census Subdivision (CSD)", "value": "CSD"},
-                    {"label": "Census Division (CD)", "value": "CD"},
-                    {"label": "Province", "value": "Province"},
-                ],
-                value="CSD",
-                clearable=False,
-                style={"marginBottom": "10px", "width": "300px"}
-            ),
-            html.H4("Canada Subdivisions Map", id="canada-map-title"),
-            dl.Map([
-                dl.TileLayer(),
-                dl.GeoJSON(
-                    data=csd_geojson,
-                    id="csd-geojson",
-                    zoomToBoundsOnClick=False,
-                    hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
-                    options=dict(style=style_handle),
-                    hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
-                )],
-            center=[54.5, -126],
-            zoom=5,
-            style={'width': '100%', 'height': '600px'},
-            id="bc-map"),
-        ], width=6),
-        dbc.Col([
-            html.Label("Select administrative level:"),
-            dcc.Dropdown(
-                id="pie-grouping",
-                options=[
-                    {"label": f"World", "value": "Country (including Canada)"},
-                    {"label": f"{indent}Inside Canada", "value": "---", "disabled": True},
-                    {"label": f"{indent*2}Province", "value": "Inside Canada (Provinces)"},
-                    {"label": f"{indent}Outside Canada", "value": "---", "disabled": True},
-                    {"label": f"{indent*2}Continent", "value": "Continent"},
-                    {"label": f"{indent*2}Region", "value": "Region"},
-                    {"label": f"{indent*2}Country (excluding Canada)", "value": "Country (excluding Canada)"}
-                ],
-                value="Country (including Canada)",
-                clearable=False,
-                style={"marginBottom": "10px", "width": "300px"}
-            ),
-            html.H4("Immigrant Origins World Map", id="world-map-title"),
-            dl.Map([
-                dl.TileLayer(),
-                dl.GeoJSON(
-                    data=world_geojson,
-                    id="world-geojson",
-                    zoomToBoundsOnClick=False,
-                    hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
-                    options=dict(style=style_handle),
-                    hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
             )
-            ],
-            center=[20, 0],
-            zoom=2,
-            style={'width': '100%', 'height': '600px'},
-            id="world-map"),
-        ], width=6)
+        ], width=4),
     ]),
-    dbc.Row([
-        dbc.Col([
-            dvc.Vega(id="csd-pie-chart"),
-        ], width=3),
-        dbc.Col([dvc.Vega(id="canada-line-chart")], width=3),
-        dbc.Col([
-            dvc.Vega(id="origin-pie-chart"),
-        ], width=3),
-        dbc.Col([dvc.Vega(id="world-line-chart")], width=3),
-    ]),
+
     dbc.Row([
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader("Intersectional Immigration Stats"),
+                dbc.CardHeader(html.H4("Canada Subdivisions Map", id="canada-map-title")),
                 dbc.CardBody([
-                    html.P("People in selected Canada region originally from selected world region"),
-                    dvc.Vega(id="intersection-gender-chart"),
-                    dvc.Vega(id="intersection-age-chart"),
-                    dvc.Vega(id="intersection-line-chart")
+                    html.Label("Select administrative level:"),
+                    dcc.Dropdown(
+                        id="canada-admin-level",
+                        options=[
+                            {"label": "Census Subdivision (CSD)", "value": "CSD"},
+                            {"label": "Census Division (CD)", "value": "CD"},
+                            {"label": "Province", "value": "Province"},
+                        ],
+                        value="CSD",
+                        clearable=False,
+                        style={"marginBottom": "10px", "width": "300px"}
+                    ),
+                    
+                    dl.Map([
+                        dl.TileLayer(),
+                        dl.GeoJSON(
+                            data=csd_geojson,
+                            id="csd-geojson",
+                            zoomToBoundsOnClick=False,
+                            hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
+                            options=dict(style=style_handle),
+                            hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
+                        )
+                    ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '600px'}, id="bc-map"),
+                    dbc.Row([
+                        dbc.Col([dvc.Vega(id="canada-bar-chart")], width=6),
+                        dbc.Col([dvc.Vega(id="canada-line-chart")], width=6),
+                    ])
                 ])
             ])
+        ], width=6),
+
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader(html.H4("Immigrant Origins World Map", id="world-map-title")),
+                dbc.CardBody([
+                    html.Label("Select administrative level:"),
+                    dcc.Dropdown(
+                        id="world-admin-level",
+                        options=[
+                            {"label": f"World", "value": "Country (including Canada)"},
+                            {"label": f"{indent}Inside Canada", "value": "---", "disabled": True},
+                            {"label": f"{indent*2}Province", "value": "Inside Canada (Provinces)"},
+                            {"label": f"{indent}Outside Canada", "value": "---", "disabled": True},
+                            {"label": f"{indent*2}Continent", "value": "Continent"},
+                            {"label": f"{indent*2}Region", "value": "Region"},
+                            {"label": f"{indent*2}Country (excluding Canada)", "value": "Country (excluding Canada)"}
+                        ],
+                        value="Country (including Canada)",
+                        clearable=False,
+                        style={"marginBottom": "10px", "width": "300px"}
+                    ),
+                    
+                    dl.Map([
+                        dl.TileLayer(),
+                        dl.GeoJSON(
+                            data=world_geojson,
+                            id="world-geojson",
+                            zoomToBoundsOnClick=False,
+                            hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
+                            options=dict(style=style_handle),
+                            hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
+                        )
+                    ], center=[20, 0], zoom=2, style={'width': '100%', 'height': '600px'}, id="world-map"),
+                    dbc.Row([
+                        dbc.Col([dvc.Vega(id="world-bar-chart")], width=6),
+                        dbc.Col([dvc.Vega(id="world-line-chart")], width=6),
+                    ])
+                ])
+            ])
+        ], width=6)
+    ]),
+
+    dbc.Row([
+        dbc.Col([
+            html.H5(id="intersection-title", className="text-center mb-3")
         ], width=12)
     ]),
 
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Gender Breakdown"),
+                dbc.CardBody([dvc.Vega(id="intersection-gender-chart")])
+            ])
+        ], width=4),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Age Breakdown"),
+                dbc.CardBody([dvc.Vega(id="intersection-age-chart")])
+            ])
+        ], width=4),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Immigration Period"),
+                dbc.CardBody([dvc.Vega(id="intersection-line-chart")])
+            ])
+        ], width=4),
+    ]),
 
-    # dcc.Store(id="filtered-data"),
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="hovered-world-map", data=None),
     dcc.Store(id="hovered-canada-map", data=None),
 ], fluid=True)
 
+
 # ========= Callbacks =========
 
-# @cache.memoize(timeout=60)
-# @callback(
-#     Output("filtered-data", "data"),
-#     Input("immigrant-status", "value"),
-#     Input("admin-level", "value")
-# )
-# def filter_base_data(immigrant_status, admin_level):
-#     if admin_level == "CD":
-#         df = df_cd_combined[df_cd_combined['variable_type'] == 'status']
-#     elif admin_level == "Province":
-#         df = df_prov_combined[df_prov_combined['variable_type'] == 'status']
-#     else:
-#         df = df_csd_combined[df_csd_combined['variable_type'] == 'status']
-
-#     filtered_df = df[
-#         (df["ImmigrantStatus"] == immigrant_status)
-#     ]
-#     return filtered_df.to_json(date_format='iso', orient='split')
 
 @callback(
     Output("hovered-world-map", "data"),
@@ -484,10 +465,11 @@ def update_hovered_canada(feature):
 
 @callback(
     Output("csd-geojson", "data"),
+    Input("immigrant-status", "value"),
     Input("selected-country", "data"),
-    Input("admin-level", "value")
+    Input("canada-admin-level", "value")
 )
-def update_subdivision_geojson(selected_country, admin_level):
+def update_subdivision_geojson(immigrant_status, selected_country, admin_level):
     df_map = {
         "CSD": df_csd_total,
         "CD": df_cd_total,
@@ -500,6 +482,7 @@ def update_subdivision_geojson(selected_country, admin_level):
     }
 
     df = df_map[admin_level]
+    df = df[df["ImmigrantStatus"] == immigrant_status]
     gdf = gdf_map[admin_level]
 
     if not selected_country:
@@ -522,7 +505,6 @@ def update_subdivision_geojson(selected_country, admin_level):
         lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
         if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1
     )
-    print(merged["DGUID"].duplicated().sum())  # should be 0
 
 
     return json.loads(merged.to_json())
@@ -531,17 +513,20 @@ def update_subdivision_geojson(selected_country, admin_level):
 
 @callback(
     Output("world-geojson", "data"),
+    Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
-    Input("pie-grouping", "value"),
-    Input("admin-level", "value")
+    Input("world-admin-level", "value"),
+    Input("canada-admin-level", "value")
 )
-def update_world_geojson(selected_dguid, pie_grouping, admin_level):
+def update_world_geojson(immigrant_status, selected_dguid, world_admin_level, canada_admin_level):
     df_map = {
         "CSD": df_csd_total,
         "CD": df_cd_total,
         "Province": df_prov_total,
     }
-    df = df_map[admin_level]
+    df = df_map[canada_admin_level]
+    df = df[df["ImmigrantStatus"] == immigrant_status]
+
 
     if selected_dguid != "ALL":
         df = df[df["DGUID"] == selected_dguid]
@@ -553,20 +538,20 @@ def update_world_geojson(selected_dguid, pie_grouping, admin_level):
         "Continent": "Outside Canada",
         "Country (excluding Canada)": "Outside Canada",
         "Inside Canada (Provinces)": "Inside Canada"
-    }.get(pie_grouping, "Total – Place of birth")
+    }.get(world_admin_level, "Total – Place of birth")
 
     match = df_agg.loc[df_agg["Birthplace"] == total_key, "Count"]
     total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
     df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
 
-    if pie_grouping == "Region":
+    if world_admin_level == "Region":
         merged = region_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
-    elif pie_grouping == "Continent":
+    elif world_admin_level == "Continent":
         merged = continent_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
-    elif pie_grouping == "Inside Canada (Provinces)":
+    elif world_admin_level == "Inside Canada (Provinces)":
         merged = gdf_prov.merge(df_agg, left_on="NAME", right_on="Birthplace", how="left")
         merged.rename(columns={"NAME": "ADMIN"}, inplace=True)
-    elif pie_grouping == "Country (excluding Canada)":
+    elif world_admin_level == "Country (excluding Canada)":
         merged = world_gdf[world_gdf["ADMIN"] != "Inside Canada"].merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     else:
         merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
@@ -601,7 +586,7 @@ def update_selected_dguid(feature):
 
 @callback(
     Output("canada-map-title", "children"),
-    Input("admin-level", "value"),
+    Input("canada-admin-level", "value"),
     Input("selected-country", "data")
 )
 def update_canada_map_title(admin_level, selected_country):
@@ -619,14 +604,14 @@ def update_world_title(feature):
     return "Immigrant Origins for All Subdivisions"
 
 @callback(
-    Output("origin-pie-chart", "spec"),
+    Output("world-bar-chart", "spec"),
+    Input("immigrant-status", "value"),
     Input("selected-dguid", "data"),
-    Input("pie-grouping", "value"),
+    Input("world-admin-level", "value"),
     Input("hovered-world-map", "data"),
-    # Input("filtered-data", "data"),
-    Input("admin-level", "value"),
+    Input("canada-admin-level", "value"),
 )
-def update_world_pie_chart(selected_dguid, grouping_level, hovered_label, admin_level):
+def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hovered_label, admin_level):
     if selected_dguid == "ALL":
         return alt.Chart(pd.DataFrame({"label": ["No subdivision selected"], "count": [1]})) \
             .mark_bar().encode(x="label:N", y="count:Q") \
@@ -638,7 +623,8 @@ def update_world_pie_chart(selected_dguid, grouping_level, hovered_label, admin_
         "Province": df_prov_total,
     }
     df = df_map[admin_level]
-
+    df = df[df["ImmigrantStatus"] == immigrant_status]
+    df = df[df["DGUID"] == selected_dguid]
 
     if grouping_level == "Country (including Canada)":
         df = df[df["Type"].isin(["Country", "Inside Canada"])]
@@ -673,13 +659,13 @@ def update_world_pie_chart(selected_dguid, grouping_level, hovered_label, admin_
 
 
 @callback(
-    Output("csd-pie-chart", "spec"),
+    Output("canada-bar-chart", "spec"),
+    Input("immigrant-status", "value"),
     Input("selected-country", "data"),
-    Input("admin-level", "value"),
+    Input("canada-admin-level", "value"),
     Input("hovered-canada-map", "data"),
-    # Input("filtered-data", "data"),
 )
-def update_csd_pie_chart(selected_country, admin_level, hovered_label):
+def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hovered_label):
     if not selected_country:
         return alt.Chart(pd.DataFrame({"label": ["No country selected"], "count": [1]})).mark_bar().encode(
             x="label:N", y="count:Q"
@@ -691,6 +677,7 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label):
         "Province": df_prov_total
     }
     df_country = df_map[admin_level]
+    df_country = df_country[df_country["ImmigrantStatus"] == immigrant_status]
     df_country = df_country[df_country["Birthplace"] == selected_country].copy()
 
 
@@ -720,7 +707,12 @@ def update_csd_pie_chart(selected_country, admin_level, hovered_label):
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort=label_order, title=admin_level),
         y=alt.Y("Count:Q", title="Number of Immigrants"),
-        tooltip=["Label", "Count"]
+        tooltip=["Label", "Count"],
+        opacity=alt.condition(
+            alt.datum.Label == hovered_label,
+            alt.value(1.0),
+            alt.value(0.3)
+        ) if hovered_label in df_grouped["Label"].values else alt.value(1.0)
     )
 
     return chart.to_dict(format="vega")
@@ -753,42 +745,50 @@ def make_line_chart(df, group_col):
 @callback(
     Output("canada-line-chart", "spec"),
     Input("selected-country", "data"),
+    Input("immigrant-status", "value"),
 )
-def update_canada_line_chart(selected_country):
+def update_canada_line_chart(selected_country, immigrant_status):
     if not selected_country:
         return make_line_chart(pd.DataFrame(), None)
-    # Use only period rows for the line chart
-    df = df_csd_combined[(df_csd_combined["Birthplace"] == selected_country) &
-                         (df_csd_combined["variable_type"] == 'period')].copy()
 
-    df = df[df["Gender"] == "Total - Gender"]
+    df = df_csd_combined[
+        (df_csd_combined["Birthplace"] == selected_country) &
+        (df_csd_combined["variable_type"] == "period") &
+        (df_csd_combined["Gender"] == "Total - Gender") &
+        (df_csd_combined["Age"] == "Total - Age")
+    ]
+
     grouped = df.groupby("Period", as_index=False)["Count"].sum()
     return make_line_chart(grouped, None)
+
 
 @callback(
     Output("world-line-chart", "spec"),
     Input("selected-dguid", "data"),
-    Input("admin-level", "value"),
+    Input("canada-admin-level", "value"),
+    Input("immigrant-status", "value"),
 )
-def update_world_line_chart(selected_dguid, admin_level):
+def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
     if selected_dguid == "ALL":
         return make_line_chart(pd.DataFrame(), None)
 
-    if admin_level == "CD":
-        df_all = df_cd_combined
-    elif admin_level == "Province":
-        df_all = df_prov_combined
-    else:
-        df_all = df_csd_combined
+    df_all = {
+        "CSD": df_csd_combined,
+        "CD": df_cd_combined,
+        "Province": df_prov_combined
+    }[admin_level]
 
-    # Use period rows for the line chart
-    df = df_all[(df_all["DGUID"] == selected_dguid) &
-                (df_all["Birthplace"] == "Total – Place of birth") &
-                (df_all["variable_type"] == 'period')]
+    df = df_all[
+        (df_all["DGUID"] == selected_dguid) &
+        (df_all["Birthplace"] == "Total – Place of birth") &
+        (df_all["variable_type"] == "period") &
+        (df_all["Gender"] == "Total - Gender") &
+        (df_all["Age"] == "Total - Age")
+    ]
 
-    df = df[df["Gender"] == "Total - Gender"]
     grouped = df.groupby("Period", as_index=False)["Count"].sum()
     return make_line_chart(grouped, None)
+
 
 @callback(
     Output("intersection-gender-chart", "spec"),
@@ -796,9 +796,10 @@ def update_world_line_chart(selected_dguid, admin_level):
     Output("intersection-line-chart", "spec"),
     Input("selected-dguid", "data"),
     Input("selected-country", "data"),
-    Input("admin-level", "value")
+    Input("canada-admin-level", "value"),
+    Input("immigrant-status", "value")
 )
-def update_intersection_charts(selected_dguid, selected_country, admin_level):
+def update_intersection_charts(selected_dguid, selected_country, admin_level, immigrant_status):
     if not selected_country or selected_dguid == "ALL":
         return tuple([alt.Chart(pd.DataFrame({"label": ["No data"], "count": [0]}))
             .mark_bar().encode(x="label:N", y="count:Q")
@@ -811,34 +812,53 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level):
         "Province": df_prov_combined
     }[admin_level]
 
-    # Filter for intersection
-    df_inter = df[
+    # Base filter for intersection
+    base = (
         (df["DGUID"] == selected_dguid) &
         (df["Birthplace"] == selected_country)
-    ]
+    )
 
     # Gender Bar Chart
-    gender_df = df_inter[(df_inter["Gender"].isin(["Men+", "Women+"])) &
-                         (df_inter["variable_type"] == "status")]
-    gender_chart = alt.Chart(gender_df.groupby("Gender", as_index=False)["Count"].sum()).mark_bar().encode(
+    gender_df = df[
+        base &
+        (df["variable_type"] == "status") &
+        (df["Gender"] != "Total - Gender") &
+        (df["Age"] == "Total - Age") &
+        (df["ImmigrantStatus"] == immigrant_status)
+    ]
+    gender_chart = alt.Chart(
+        gender_df.groupby("Gender", as_index=False)["Count"].sum()
+    ).mark_bar().encode(
         x=alt.X("Gender:N", title="Gender"),
         y=alt.Y("Count:Q", title="Count"),
         tooltip=["Gender", "Count"]
     ).properties(title="By Gender").to_dict(format="vega")
 
     # Age Bar Chart
-    age_df = df_inter[(df_inter["Gender"] == "Total - Gender") &
-                      (df_inter["variable_type"] == "status")]
-    age_chart = alt.Chart(age_df.groupby("Age", as_index=False)["Count"].sum()).mark_bar().encode(
+    age_df = df[
+        base &
+        (df["variable_type"] == "status") &
+        (df["Gender"] == "Total - Gender") &
+        (df["ImmigrantStatus"] == immigrant_status)
+    ]
+    age_chart = alt.Chart(
+        age_df.groupby("Age", as_index=False)["Count"].sum()
+    ).mark_bar().encode(
         x=alt.X("Age:N", title="Age Group"),
         y=alt.Y("Count:Q", title="Count"),
         tooltip=["Age", "Count"]
     ).properties(title="By Age Group").to_dict(format="vega")
 
     # Line Chart by Period
-    period_df = df_inter[(df_inter["Gender"] == "Total - Gender") &
-                         (df_inter["variable_type"] == "period")]
-    line_chart = alt.Chart(period_df.groupby("Period", as_index=False)["Count"].sum()).mark_line(point=True).encode(
+    period_df = df[
+        base &
+        (df["variable_type"] == "period") &
+        (df["Gender"] == "Total - Gender") &
+        (df["Age"] == "Total - Age")
+    ]
+    line_chart = alt.Chart(
+        period_df.groupby("Period", as_index=False)["Count"].sum()
+    ).mark_line(point=True).encode(
         x=alt.X("Period:N", title="Immigration Period"),
         y=alt.Y("Count:Q", title="Count"),
         tooltip=["Period", "Count"]
@@ -848,6 +868,27 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level):
 
 
 
+@callback(
+    Output("intersection-title", "children"),
+    Input("selected-dguid", "data"),
+    Input("selected-country", "data"),
+    Input("canada-admin-level", "value")
+)
+def update_intersection_title(dguid, country, admin_level):
+    if not country or dguid == "ALL":
+        return "Intersectional Immigration Stats (Select a region and a country)"
+
+    # Get Canadian region name
+    gdf_map = {
+        "CSD": gdf_csd,
+        "CD": gdf_cd,
+        "Province": gdf_prov
+    }
+    gdf = gdf_map[admin_level]
+    row = gdf[gdf["DGUID"] == dguid]
+    region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
+
+    return f"Immigration Stats: {region_name} ← immigrants from {country}"
 
 
 
