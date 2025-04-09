@@ -522,7 +522,8 @@ def update_subdivision_geojson(selected_country, admin_level):
         lambda row: f"{row['NAME']}: {int(row['CountryCount'])} immigrants ({row['Percentage']}%)"
         if pd.notna(row['CountryCount']) else f"{row['NAME']}: 0 immigrants (0%)", axis=1
     )
-    print(merged)
+    print(merged["DGUID"].duplicated().sum())  # should be 0
+
 
     return json.loads(merged.to_json())
 
