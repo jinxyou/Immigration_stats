@@ -485,20 +485,22 @@ def update_hovered_canada(feature):
 @callback(
     Output("csd-geojson", "data"),
     Input("selected-country", "data"),
-    Input("admin-level", "value"),
-    Input("filtered-data", "data")
+    Input("admin-level", "value")
 )
-def update_subdivision_geojson(selected_country, admin_level, filtered_data_json):
-    df = pd.read_json(filtered_data_json, orient='split')
+def update_subdivision_geojson(selected_country, admin_level):
+    df_map = {
+        "CSD": df_csd_total,
+        "CD": df_cd_total,
+        "Province": df_prov_total,
+    }
+    gdf_map = {
+        "CSD": gdf_csd,
+        "CD": gdf_cd,
+        "Province": gdf_prov,
+    }
 
-    if admin_level == "CSD":
-        gdf = gdf_csd
-    elif admin_level == "CD":
-        gdf = gdf_cd
-    elif admin_level == "Province":
-        gdf = gdf_prov
-    else:
-        return json.loads(gdf_csd.to_json())
+    df = df_map[admin_level]
+    gdf = gdf_map[admin_level]
 
     if not selected_country:
         return json.loads(gdf.to_json())
@@ -520,48 +522,48 @@ def update_subdivision_geojson(selected_country, admin_level, filtered_data_json
     return json.loads(merged.to_json())
 
 
+
 @callback(
     Output("world-geojson", "data"),
     Input("selected-dguid", "data"),
     Input("pie-grouping", "value"),
-    Input("filtered-data", "data"),
     Input("admin-level", "value")
 )
-def update_world_geojson(selected_dguid, pie_grouping, filtered_data_json, admin_level):
-    filtered_df = pd.read_json(filtered_data_json, orient='split')
-    
+def update_world_geojson(selected_dguid, pie_grouping, admin_level):
+    df_map = {
+        "CSD": df_csd_total,
+        "CD": df_cd_total,
+        "Province": df_prov_total,
+    }
+    df = df_map[admin_level]
+
     if selected_dguid != "ALL":
-        filtered_df = filtered_df[filtered_df["DGUID"] == selected_dguid]
-    
-    df_agg = filtered_df.groupby("Birthplace", as_index=False)["Count"].sum()
+        df = df[df["DGUID"] == selected_dguid]
+
+    df_agg = df.groupby("Birthplace", as_index=False)["Count"].sum()
+
+    total_key = {
+        "Region": "Outside Canada",
+        "Continent": "Outside Canada",
+        "Country (excluding Canada)": "Outside Canada",
+        "Inside Canada (Provinces)": "Inside Canada"
+    }.get(pie_grouping, "Total – Place of birth")
+
+    match = df_agg.loc[df_agg["Birthplace"] == total_key, "Count"]
+    total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
+    df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
 
     if pie_grouping == "Region":
-        match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
-        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
-        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
         merged = region_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     elif pie_grouping == "Continent":
-        match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
-        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
-        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
         merged = continent_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     elif pie_grouping == "Inside Canada (Provinces)":
-        match = df_agg.loc[df_agg["Birthplace"] == "Inside Canada", "Count"]
-        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
-        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
         merged = gdf_prov.merge(df_agg, left_on="NAME", right_on="Birthplace", how="left")
         merged.rename(columns={"NAME": "ADMIN"}, inplace=True)
-    elif pie_grouping == "Country (including Canada)":
-        match = df_agg.loc[df_agg["Birthplace"] == "Total – Place of birth", "Count"]
-        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
-        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
-        merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
     elif pie_grouping == "Country (excluding Canada)":
-        match = df_agg.loc[df_agg["Birthplace"] == "Outside Canada", "Count"]
-        total_count = match.values[0] if not match.empty else df_agg["Count"].sum()
-        df_agg["Percentage"] = (df_agg["Count"] / total_count * 100).round(2)
-        world_without_canada = world_gdf[world_gdf["ADMIN"]!="Inside Canada"]
-        merged = world_without_canada.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+        merged = world_gdf[world_gdf["ADMIN"] != "Inside Canada"].merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
+    else:
+        merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
 
     merged["Count"] = merged["Count"].fillna(0)
     merged["Percentage"] = merged["Percentage"].fillna(0)
@@ -570,6 +572,7 @@ def update_world_geojson(selected_dguid, pie_grouping, filtered_data_json, admin
     )
 
     return json.loads(merged.to_json())
+
 
 @callback(
     Output("selected-country", "data"),
