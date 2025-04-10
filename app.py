@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Output, Input, callback
+from dash import html, dcc, Output, Input, callback, ctx
 import dash_leaflet as dl
 import dash_leaflet.express as dlx
 import dash_bootstrap_components as dbc
@@ -363,19 +363,32 @@ app.layout = dbc.Container([
             dbc.Card([
                 dbc.CardHeader(html.H4("Canada Map", id="canada-map-title")),
                 dbc.CardBody([
-                    html.Label("Select administrative level:"),
-                    dcc.Dropdown(
-                        id="canada-admin-level",
-                        options=[
-                            {"label": "Census Subdivision (CSD)", "value": "CSD"},
-                            {"label": "Census Division (CD)", "value": "CD"},
-                            {"label": "Province", "value": "Province"},
-                        ],
-                        value="CSD",
-                        clearable=False,
-                        style={"marginBottom": "10px", "width": "300px"}
-                    ),
-                    
+                    dbc.Row([
+                        dbc.Col([
+                            html.Label("Select administrative level:"),
+                            dcc.Dropdown(
+                                id="canada-admin-level",
+                                options=[
+                                    {"label": "Census Subdivision (CSD)", "value": "CSD"},
+                                    {"label": "Census Division (CD)", "value": "CD"},
+                                    {"label": "Province", "value": "Province"},
+                                ],
+                                value="CSD",
+                                clearable=False,
+                                style={"marginBottom": "10px", "width": "100%"}
+                            ),
+                        ], width=3),
+                        dbc.Col([
+                            dbc.Button(
+                                "All Canada",
+                                id="reset-dguid-button",
+                                color="primary",
+                                size="sm",
+                                style={"marginTop": "30px", "float": "right"}
+                            )
+                        ], width=9),
+                    ], className="mb-2"),
+
                     dl.Map([
                         dl.TileLayer(),
                         dl.GeoJSON(
@@ -388,6 +401,7 @@ app.layout = dbc.Container([
                         ),
                         colorbar
                     ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '600px'}, id="bc-map"),
+
                     dbc.Row([
                         dbc.Col([dvc.Vega(id="canada-bar-chart")], width=6),
                         dbc.Col([dvc.Vega(id="canada-line-chart")], width=6),
@@ -630,15 +644,25 @@ def update_selected_country(feature):
         return None
     return feature["properties"].get("ADMIN")
 
+
+
 @callback(
     Output("selected-dguid", "data"),
-    Input("csd-geojson", "clickData")
+    Input("csd-geojson", "clickData"),
+    Input("reset-dguid-button", "n_clicks")
 )
-def update_selected_dguid(feature):
-    if not feature:
+def update_selected_dguid_combined(clickData, reset_clicks):
+    triggered_id = ctx.triggered_id
+
+    if triggered_id == "reset-dguid-button":
         return "ALL"
-    dguid = feature["properties"].get("DGUID")
-    return dguid if dguid else "ALL"
+
+    if clickData:
+        dguid = clickData["properties"].get("DGUID")
+        return dguid if dguid else "ALL"
+
+    return dash.no_update
+
 
 @callback(
     Output("canada-map-title", "children"),
@@ -652,12 +676,18 @@ def update_canada_map_title(admin_level, selected_country):
 
 @callback(
     Output("world-map-title", "children"),
-    Input("csd-geojson", "clickData")
+    Input("selected-dguid", "data"),
+    Input("csd-geojson", "clickData"),
 )
-def update_world_title(feature):
-    if feature:
-        return f"Immigrant Origins for {feature['properties']['NAME']}"
-    return "Immigrant Origins for All Canada"
+def update_world_title(selected_dguid, clickData):
+    if selected_dguid == "ALL":
+        return "Immigrant Origins for All Canada"
+
+    if clickData and "properties" in clickData and "NAME" in clickData["properties"]:
+        return f"Immigrant Origins for {clickData['properties']['NAME']}"
+
+    return "Immigrant Origins"
+
 
 @callback(
     Output("world-bar-chart", "spec"),
@@ -668,11 +698,6 @@ def update_world_title(feature):
     Input("canada-admin-level", "value"),
 )
 def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hovered_label, admin_level):
-    if selected_dguid == "ALL":
-        return alt.Chart(pd.DataFrame({"label": ["No subdivision selected"], "count": [1]})) \
-            .mark_bar().encode(x="label:N", y="count:Q") \
-            .properties(title="No data").to_dict(format="vega")
-
     df_map = {
         "CSD": df_csd_total,
         "CD": df_cd_total,
@@ -680,7 +705,9 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
     }
     df = df_map[admin_level]
     df = df[df["ImmigrantStatus"] == immigrant_status]
-    df = df[df["DGUID"] == selected_dguid]
+
+    if selected_dguid != "ALL":
+        df = df[df["DGUID"] == selected_dguid]
 
     if grouping_level == "Country (including Canada)":
         df = df[df["Type"].isin(["Country", "Inside Canada"])]
@@ -714,6 +741,7 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
     return chart.to_dict(format="vega")
 
 
+
 @callback(
     Output("canada-bar-chart", "spec"),
     Input("immigrant-status", "value"),
@@ -725,7 +753,7 @@ def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hov
     if not selected_country:
         return alt.Chart(pd.DataFrame({"label": ["No country selected"], "count": [1]})).mark_bar().encode(
             x="label:N", y="count:Q"
-        ).properties(title="Select a country on the world map", width="container").to_dict(format="vega")
+        ).properties(title="Select a country on the world map").to_dict(format="vega")
 
     df_map = {
         "CSD": df_csd_total,
@@ -758,7 +786,7 @@ def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hov
     if df_grouped.empty:
         return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_bar().encode(
             x="label:N", y="count:Q"
-        ).properties(title="No data", width="container").to_dict(format="vega")
+        ).properties(title="No data").to_dict(format="vega")
 
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort=label_order, title=admin_level),
@@ -852,37 +880,40 @@ def update_canada_status_chart(selected_country, immigrant_status):
     Input("immigrant-status", "value"),
 )
 def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
-    if selected_dguid == "ALL":
-        return make_line_chart(pd.DataFrame(), None)
-
     df_all = {
         "CSD": df_csd_combined,
         "CD": df_cd_combined,
         "Province": df_prov_combined
     }[admin_level]
+
+    base_filter = (
+        (df_all["Birthplace"] == "Total – Place of birth") &
+        (df_all["Gender"] == "Total - Gender") &
+        (df_all["Age"] == "Total - Age")
+    )
+
+    if selected_dguid != "ALL":
+        base_filter = base_filter & (df_all["DGUID"] == selected_dguid)
+
     if immigrant_status == "Immigrants":
         df = df_all[
-            (df_all["DGUID"] == selected_dguid) &
-            (df_all["Birthplace"] == "Total – Place of birth") &
-            (df_all["variable_type"] == "period") &
-            (df_all["Gender"] == "Total - Gender") &
-            (df_all["Age"] == "Total - Age")
+            base_filter & (df_all["variable_type"] == "period")
         ]
         grouped = df.groupby("Period", as_index=False)["Count"].sum()
         return make_line_chart(grouped, None)
+
     elif immigrant_status == "Total":
         df = df_all[
-            (df_all["DGUID"] == selected_dguid) &
-            (df_all["Birthplace"] == "Total – Place of birth") &
+            base_filter &
             (df_all["variable_type"] == "status") &
-            (df_all["Gender"] == "Total - Gender") &
-            (df_all["Age"] == "Total - Age") &
             (df_all["ImmigrantStatus"] != "Total")
         ]
         pie_df = df.groupby("ImmigrantStatus", as_index=False)["Count"].sum()
         return make_pie_chart(pie_df, "ImmigrantStatus")
+
     else:
         return make_line_chart(pd.DataFrame(), None)
+
 
 
 
