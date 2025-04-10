@@ -301,16 +301,22 @@ def get_world_geojson(selected_dguid):
     return json.loads(merged.to_json())
 
 
-def get_csd_geojson(selected_country):
+def get_canada_geojson(selected_country):
     if not selected_country:
-        return csd_geojson
+        gdf = gdf_csd.copy()
+        gdf["tooltip"] = gdf["NAME"]
+        return json.loads(gdf.to_json())
 
-    df_total = df_csd_combined[(df_csd_combined["Birthplace"] == "Total – Place of birth") &
-                               (df_csd_combined["variable_type"] == 'status')]
+    df_total = df_csd_combined[
+        (df_csd_combined["Birthplace"] == "Total – Place of birth") &
+        (df_csd_combined["variable_type"] == 'status')
+    ]
     df_total = df_total[["DGUID", "Count"]].rename(columns={"Count": "TotalCount"})
 
-    df_country = df_csd_combined[(df_csd_combined["Birthplace"] == selected_country) &
-                                 (df_csd_combined["variable_type"] == 'status')]
+    df_country = df_csd_combined[
+        (df_csd_combined["Birthplace"] == selected_country) &
+        (df_csd_combined["variable_type"] == 'status')
+    ]
     df_country = df_country[["DGUID", "Count"]].rename(columns={"Count": "CountryCount"})
 
     df_merged = pd.merge(df_total, df_country, on="DGUID", how="left")
@@ -319,21 +325,14 @@ def get_csd_geojson(selected_country):
 
     merged = gdf_csd.merge(df_merged, on="DGUID", how="left")
     merged["Percentage"] = merged["Percentage"].fillna(0)
-    merged["tooltip"] = merged.apply(
-        lambda row: (
-            f"{row['ADMIN']}:<br>"
-            f"{int(row['Count'])} people from {row['ADMIN']} in {region_name},<br>"
-            f"{row['Percentage']}% of {immigrant_status} population of {int(total_count)} in {region_name}"
-            if row["Count"] > 0 else f"{row['ADMIN']}:<br>No data"
-        ),
-        axis=1
-    )
+    merged["tooltip"] = merged["NAME"]
 
     return json.loads(merged.to_json())
 
+
 # === Initial World GeoJSON ===
 world_geojson = get_world_geojson(default_dguid)
-csd_geojson = get_csd_geojson(None)
+csd_geojson = get_canada_geojson(None)
 
 indent = "\u00A0\u00A0\u00A0"
 
@@ -527,9 +526,11 @@ def update_canada_geojson(immigrant_status, selected_country, admin_level):
 
     df = df_map[admin_level]
     df = df[df["ImmigrantStatus"] == immigrant_status]
-    gdf = gdf_map[admin_level]
+    gdf = gdf_map[admin_level].copy()
 
     if not selected_country:
+        # Just show the names in the tooltip
+        gdf["tooltip"] = gdf["NAME"]
         return json.loads(gdf.to_json())
 
     df_total = df[df["Birthplace"] == "Total – Place of birth"].groupby("DGUID", as_index=False)["Count"].sum()
@@ -542,19 +543,18 @@ def update_canada_geojson(immigrant_status, selected_country, admin_level):
     df_merged["CountryCount"] = df_merged["CountryCount"].fillna(0)
     df_merged["Percentage"] = (df_merged["CountryCount"] / df_merged["TotalCount"] * 100).round(2)
 
-
     merged = gdf.merge(df_merged, on="DGUID", how="left")
     merged["Percentage"] = merged["Percentage"].fillna(0)
+
     merged["tooltip"] = merged.apply(
         lambda row: (
             f"{row['NAME']}:<br>"
             f"{int(row['CountryCount'])} people from {selected_country}<br>"
             f"{row['Percentage']}% of the {immigrant_status} population of {int(row['TotalCount'])}"
-            if pd.notna(row['CountryCount']) and pd.notna(row['TotalCount']) else f"{row['NAME']}: No data"
+            if pd.notna(row['CountryCount']) and pd.notna(row['TotalCount']) else f"{row['NAME']}"
         ),
         axis=1
     )
-
 
     return json.loads(merged.to_json())
 
@@ -619,13 +619,20 @@ def update_world_geojson(immigrant_status, selected_dguid, world_admin_level, ca
         merged = world_gdf.merge(df_agg, left_on="ADMIN", right_on="Birthplace", how="left")
 
     # Fill and format tooltip
+    tooltip_range={
+        "Region": "with origin outside Canada",
+        "Continent": "with origin outside Canada",
+        "Country (excluding Canada)": "with origin outside Canada",
+        "Inside Canada (Provinces)": "with origin inside Canada",
+        "Country (including Canada)": ""
+        }
     merged["Count"] = merged["Count"].fillna(0)
     merged["Percentage"] = merged["Percentage"].fillna(0)
     merged["tooltip"] = merged.apply(
         lambda row: (
             f"{row['ADMIN']}:<br>"
             f"{int(row['Count'])} people from {row['ADMIN']} in {region_name},<br>"
-            f"{row['Percentage']}% of {immigrant_status} population of {int(total_count)} in {region_name}"
+            f"{row['Percentage']}% of {immigrant_status} population of {int(total_count)} in {region_name} {tooltip_range[world_admin_level]}"
             if row["Count"] > 0 else f"{row['ADMIN']}:<br>No data"
         ),
         axis=1
@@ -672,7 +679,7 @@ def update_selected_dguid_combined(clickData, reset_clicks):
 def update_canada_map_title(admin_level, selected_country):
     if selected_country:
         return f"Canada {admin_level} Map for Immigrants from {selected_country}"
-    return "Canada Subdivisions Map"
+    return "Canada Map"
 
 @callback(
     Output("world-map-title", "children"),
@@ -751,9 +758,9 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
 )
 def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hovered_label):
     if not selected_country:
-        return alt.Chart(pd.DataFrame({"label": ["No country selected"], "count": [1]})).mark_bar().encode(
+        return alt.Chart(pd.DataFrame({"label": ["No selected"], "count": [1]})).mark_bar().encode(
             x="label:N", y="count:Q"
-        ).properties(title="Select a country on the world map").to_dict(format="vega")
+        ).properties(title="Click a region in the world map").to_dict(format="vega")
 
     df_map = {
         "CSD": df_csd_total,
