@@ -64,9 +64,7 @@ immigration_period_cols = {
     "Immigrant status and period of immigration (11):1980 to 1990[5]": "1980 to 1990",
     "Immigrant status and period of immigration (11):1991 to 2000[6]": "1991 to 2000",
     "Immigrant status and period of immigration (11):2001 to 2010[7]": "2001 to 2010",
-    "Immigrant status and period of immigration (11):2011 to 2021[8]": "2011 to 2021",
-    "Immigrant status and period of immigration (11):2011 to 2015[9]": "2011 to 2015",
-    "Immigrant status and period of immigration (11):2016 to 2021[10]": "2016 to 2021"
+    "Immigrant status and period of immigration (11):2011 to 2021[8]": "2011 to 2021"
 }
 
 def melt_immigration_periods(df_raw):
@@ -181,6 +179,45 @@ df_prov_total = df_prov[
 ].copy()
 
 
+
+# === Calculate Summary Statistics ===
+def calculate_summary_stats():
+    # Use all Canada data (Total - Gender, Total - Age, Total birthplace)
+    canada_totals = df_csd[
+        (df_csd["Gender"] == "Total - Gender") &
+        (df_csd["Age"] == "Total - Age") &
+        (df_csd["Birthplace"] == "Total – Place of birth")
+    ]
+    
+    total_pop = canada_totals[canada_totals["ImmigrantStatus"] == "Total"]["Count"].sum()
+    immigrants = canada_totals[canada_totals["ImmigrantStatus"] == "Immigrants"]["Count"].sum()
+    non_immigrants = canada_totals[canada_totals["ImmigrantStatus"] == "Non-immigrants"]["Count"].sum()
+    non_permanent = canada_totals[canada_totals["ImmigrantStatus"] == "Non-permanent residents"]["Count"].sum()
+    
+    # Count unique origin countries (excluding totals and Inside Canada)
+    origin_countries = df_csd[
+        (df_csd["Type"] == "Country") &
+        (~df_csd["Birthplace"].str.contains("Total|Inside Canada", na=False))
+    ]["Birthplace"].nunique()
+    
+    return {
+        "total_population": total_pop,
+        "immigrants": immigrants,
+        "non_immigrants": non_immigrants,
+        "non_permanent_residents": non_permanent,
+        "origin_countries": origin_countries
+    }
+
+def format_number(num):
+    """Format large numbers with M/K suffixes"""
+    if num >= 1_000_000:
+        return f"{num/1_000_000:.1f}M"
+    elif num >= 1_000:
+        return f"{num/1_000:.0f}K"
+    else:
+        return f"{num:,.0f}"
+
+summary_stats = calculate_summary_stats()
 
 # === Create Combined DataFrames ===
 # For each geographic level we add a new column ("variable_type") so we can later choose between status and period rows.
@@ -408,26 +445,26 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             html.Div([
-                html.H3("15.9M", className="text-primary mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.H3(format_number(summary_stats["total_population"]), className="text-primary mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
                 html.P("Total Population", className="mb-0 text-muted")
             ], style=custom_styles['stat-card'])
         ], width=3),
         dbc.Col([
             html.Div([
-                html.H3("4.9M", className="text-success mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.H3(format_number(summary_stats["immigrants"]), className="text-success mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
                 html.P("Immigrants", className="mb-0 text-muted")
             ], style=custom_styles['stat-card'])
         ], width=3),
         dbc.Col([
             html.Div([
-                html.H3("200+", className="text-info mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
-                html.P("Origin Countries", className="mb-0 text-muted")
+                html.H3(format_number(summary_stats["non_immigrants"]), className="text-info mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.P("Non-immigrants", className="mb-0 text-muted")
             ], style=custom_styles['stat-card'])
         ], width=3),
         dbc.Col([
             html.Div([
-                html.H3("13", className="text-warning mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
-                html.P("Provinces & Territories", className="mb-0 text-muted")
+                html.H3(format_number(summary_stats["non_permanent_residents"]), className="text-warning mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.P("Non-permanent Residents", className="mb-0 text-muted")
             ], style=custom_styles['stat-card'])
         ], width=3),
     ], className="mb-4"),
@@ -532,7 +569,7 @@ app.layout = dbc.Container([
                         ], width=6),
                         dbc.Col([
                             dbc.Card([
-                                dbc.CardHeader(html.H6("Trends & Distribution", className="mb-0")),
+                                dbc.CardHeader(html.H6(id="canada-chart-title", className="mb-0")),
                                 dbc.CardBody([dvc.Vega(id="canada-line-chart")], style={'padding': '10px'})
                             ], style=custom_styles['chart-card'])
                         ], width=6),
@@ -591,7 +628,7 @@ app.layout = dbc.Container([
                         ], width=6),
                         dbc.Col([
                             dbc.Card([
-                                dbc.CardHeader(html.H6("Immigration Patterns", className="mb-0")),
+                                dbc.CardHeader(html.H6(id="world-chart-title", className="mb-0")),
                                 dbc.CardBody([dvc.Vega(id="world-line-chart")], style={'padding': '10px'})
                             ], style=custom_styles['chart-card'])
                         ], width=6),
@@ -644,7 +681,7 @@ app.layout = dbc.Container([
                     dbc.CardHeader([
                         html.H5([
                             html.I(className="bi bi-graph-up me-2", style={'color': '#27ae60'}),
-                            "Immigration Timeline"
+                            html.Span(id="intersection-chart-title")
                         ], className="mb-0 text-dark")
                     ], style={'background': '#f8f9fa', 'borderBottom': '2px solid #27ae60'}),
                     dbc.CardBody([
@@ -920,9 +957,11 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
         df = df[(df["Type"] == grouping_level) | (df["Birthplace"] == "Oceania")]
 
     if df.empty:
-        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})) \
-            .mark_bar().encode(x="label:N", y="count:Q") \
-            .properties(title="No data", width="container").to_dict(format="vega")
+        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("No data available")
+        ).properties(width="container").to_dict(format="vega")
 
     df_agg = df.groupby("Birthplace", as_index=False)["Count"].sum()
     df_agg = df_agg.sort_values("Count", ascending=False).head(15)
@@ -930,14 +969,14 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
 
     chart = alt.Chart(df_agg).mark_bar().encode(
         x=alt.X("Label:N", sort=df_agg["Label"].tolist(), title="Birthplace"),
-        y=alt.Y("Count:Q", title="Number of Immigrants"),
+        y=alt.Y("Count:Q", title="Count"),
         tooltip=["Label", "Count"],
         opacity=alt.condition(
             alt.datum.Label == hovered_label,
             alt.value(1.0),
             alt.value(0.3)
         ) if hovered_label in df_agg["Label"].values else alt.value(1.0)
-    ).properties(title="Top Birthplaces", width="container")
+    ).properties(width="container")
 
     return chart.to_dict(format="vega")
 
@@ -952,9 +991,11 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
 )
 def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hovered_label):
     if not selected_country:
-        return alt.Chart(pd.DataFrame({"label": ["No selected"], "count": [1]})).mark_bar().encode(
-            x="label:N", y="count:Q"
-        ).properties(title="Click a region in the world map").to_dict(format="vega")
+        return alt.Chart(pd.DataFrame({"label": ["No selection"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("Click a region in the world map")
+        ).properties(width="container").to_dict(format="vega")
 
     df_map = {
         "CSD": df_csd_total,
@@ -985,13 +1026,15 @@ def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hov
     df_grouped.rename(columns={group_col: "Label"}, inplace=True)
 
     if df_grouped.empty:
-        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_bar().encode(
-            x="label:N", y="count:Q"
-        ).properties(title="No data").to_dict(format="vega")
+        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("No data available")
+        ).properties(width="container").to_dict(format="vega")
 
     chart = alt.Chart(df_grouped).mark_bar().encode(
         x=alt.X("Label:N", sort=label_order, title=admin_level),
-        y=alt.Y("Count:Q", title="Number of Immigrants"),
+        y=alt.Y("Count:Q", title="Count"),
         tooltip=["Label", "Count"],
         opacity=alt.condition(
             alt.datum.Label == hovered_label,
@@ -1002,6 +1045,19 @@ def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hov
 
     return chart.to_dict(format="vega")
 
+# Helper functions for proper ordering
+def get_age_order():
+    return ["0 to 14 years", "15 to 24 years", "25 to 54 years", "55 to 64 years", "65 years and over"]
+
+def get_period_order():
+    return ["Before 1980", "1980 to 1990", "1991 to 2000", "2001 to 2010", "2011 to 2021"]
+
+def get_gender_order():
+    return ["Men+", "Women+"]
+
+def get_status_order():
+    return ["Non-immigrants", "Immigrants", "Non-permanent residents"]
+
 # Helper function for line charts.
 def make_line_chart(df, group_col):
     if df.empty:
@@ -1010,18 +1066,23 @@ def make_line_chart(df, group_col):
             "Count": [0]
         })
         return alt.Chart(empty_df).mark_text(align="center", baseline="middle", fontSize=15).encode(
-            text=alt.value("")
+            text=alt.value("No data available")
         ).properties(height=200, width="container").to_dict(format="vega")
 
+    # Set proper order for period data
+    period_order = get_period_order()
+    available_periods = df["Period"].unique()
+    ordered_periods = [p for p in period_order if p in available_periods]
+
     base = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X("Period:N", title="Immigration Period"),
-        y=alt.Y("Count:Q", title="Number of Immigrants")
+        x=alt.X("Period:N", title="Immigration Period", sort=ordered_periods),
+        y=alt.Y("Count:Q", title="Count")
     )
 
     if group_col == "Gender":
-        base = base.encode(color=alt.Color("Gender:N", title="Gender"), tooltip=["Period", "Gender", "Count"])
+        base = base.encode(color=alt.Color("Gender:N", title="Gender", sort=get_gender_order()), tooltip=["Period", "Gender", "Count"])
     elif group_col == "Age":
-        base = base.encode(color=alt.Color("Age:N", title="Age Group"), tooltip=["Period", "Age", "Count"])
+        base = base.encode(color=alt.Color("Age:N", title="Age Group", sort=get_age_order()), tooltip=["Period", "Age", "Count"])
     else:
         base = base.encode(tooltip=["Period", "Count"])
 
@@ -1029,16 +1090,27 @@ def make_line_chart(df, group_col):
 
 def make_pie_chart(df, label_col):
     if df.empty:
-        return alt.Chart(pd.DataFrame({label_col: ["No data"], "Count": [1]})).mark_arc().encode(
-            theta="Count:Q",
-            color=f"{label_col}:N"
-        ).properties(title="No data").to_dict(format="vega")
+        return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("No data available")
+        ).properties(width="container").to_dict(format="vega")
+
+    # Set proper ordering based on the label column
+    if label_col == "ImmigrantStatus":
+        sort_order = get_status_order()
+    elif label_col == "Gender":
+        sort_order = get_gender_order()
+    elif label_col == "Age":
+        sort_order = get_age_order()
+    else:
+        sort_order = None
 
     return alt.Chart(df).mark_arc(innerRadius=50).encode(
         theta=alt.Theta(field="Count", type="quantitative"),
-        color=alt.Color(field=label_col, type="nominal"),
+        color=alt.Color(field=label_col, type="nominal", sort=sort_order),
         tooltip=[label_col, "Count"]
-    ).properties(title="Immigration Status Breakdown", width="container").to_dict(format="vega")
+    ).properties(width="container").to_dict(format="vega")
 
 
 @callback(
@@ -1125,6 +1197,7 @@ def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
         base_filter = base_filter & (df_all["DGUID"] == selected_dguid)
 
     if immigrant_status == "Immigrants":
+        # Show immigration periods timeline
         df = df_all[
             base_filter & (df_all["variable_type"] == "period")
         ]
@@ -1132,6 +1205,7 @@ def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
         return make_line_chart(grouped, None)
 
     elif immigrant_status == "Total":
+        # Show immigration status breakdown as pie chart
         df = df_all[
             base_filter &
             (df_all["variable_type"] == "status") &
@@ -1139,6 +1213,34 @@ def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
         ]
         pie_df = df.groupby("ImmigrantStatus", as_index=False)["Count"].sum()
         return make_pie_chart(pie_df, "ImmigrantStatus")
+
+    elif immigrant_status == "Non-immigrants":
+        # Show gender breakdown for non-immigrants
+        df = df_all[
+            (df_all["Birthplace"] == "Total – Place of birth") &
+            (df_all["variable_type"] == "status") &
+            (df_all["ImmigrantStatus"] == "Non-immigrants") &
+            (df_all["Gender"] != "Total - Gender") &
+            (df_all["Age"] == "Total - Age")
+        ]
+        if selected_dguid != "ALL":
+            df = df[df["DGUID"] == selected_dguid]
+        gender_df = df.groupby("Gender", as_index=False)["Count"].sum()
+        return make_pie_chart(gender_df, "Gender")
+
+    elif immigrant_status == "Non-permanent residents":
+        # Show age group breakdown for non-permanent residents
+        df = df_all[
+            (df_all["Birthplace"] == "Total – Place of birth") &
+            (df_all["variable_type"] == "status") &
+            (df_all["ImmigrantStatus"] == "Non-permanent residents") &
+            (df_all["Gender"] == "Total - Gender") &
+            (df_all["Age"] != "Total - Age")
+        ]
+        if selected_dguid != "ALL":
+            df = df[df["DGUID"] == selected_dguid]
+        age_df = df.groupby("Age", as_index=False)["Count"].sum()
+        return make_pie_chart(age_df, "Age")
 
     else:
         return make_line_chart(pd.DataFrame(), None)
@@ -1182,13 +1284,19 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
         (df["Age"] == "Total - Age") &
         (df["ImmigrantStatus"] == immigrant_status)
     ]
-    gender_chart = alt.Chart(
-        gender_df.groupby("Gender", as_index=False)["Count"].sum()
-    ).mark_bar().encode(
-        x=alt.X("Gender:N", title="Gender"),
-        y=alt.Y("Count:Q", title="Count"),
-        tooltip=["Gender", "Count"]
-    ).properties(title="By Gender", width="container").to_dict(format="vega")
+    gender_grouped = gender_df.groupby("Gender", as_index=False)["Count"].sum()
+    if gender_grouped.empty:
+        gender_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("No data available")
+        ).properties(width="container").to_dict(format="vega")
+    else:
+        gender_chart = alt.Chart(gender_grouped).mark_bar().encode(
+            x=alt.X("Gender:N", title="Gender", sort=get_gender_order()),
+            y=alt.Y("Count:Q", title="Count"),
+            tooltip=["Gender", "Count"]
+        ).properties(width="container").to_dict(format="vega")
 
     # Age Bar Chart
     age_df = df[
@@ -1197,30 +1305,50 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
         (df["Gender"] == "Total - Gender") &
         (df["ImmigrantStatus"] == immigrant_status)
     ]
-    age_chart = alt.Chart(
-        age_df.groupby("Age", as_index=False)["Count"].sum()
-    ).mark_bar().encode(
-        x=alt.X("Age:N", title="Age Group"),
-        y=alt.Y("Count:Q", title="Count"),
-        tooltip=["Age", "Count"]
-    ).properties(title="By Age Group", width="container").to_dict(format="vega")
+    age_grouped = age_df.groupby("Age", as_index=False)["Count"].sum()
+    if age_grouped.empty:
+        age_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("No data available")
+        ).properties(width="container").to_dict(format="vega")
+    else:
+        age_chart = alt.Chart(age_grouped).mark_bar().encode(
+            x=alt.X("Age:N", title="Age Group", sort=get_age_order()),
+            y=alt.Y("Count:Q", title="Count"),
+            tooltip=["Age", "Count"]
+        ).properties(width="container").to_dict(format="vega")
 
-    # Line Chart by Period
+    # Third Chart - varies by immigration status
     if immigrant_status == "Immigrants":
+        # Show immigration periods timeline for immigrants
         period_df = df[
             base &
             (df["variable_type"] == "period") &
             (df["Gender"] == "Total - Gender") &
             (df["Age"] == "Total - Age")
         ]
-        line_chart = alt.Chart(
-            period_df.groupby("Period", as_index=False)["Count"].sum()
-        ).mark_line(point=True).encode(
-            x=alt.X("Period:N", title="Immigration Period"),
-            y=alt.Y("Count:Q", title="Count"),
-            tooltip=["Period", "Count"]
-        ).properties(title="By Immigration Period", width="container").to_dict(format="vega")
+        period_grouped = period_df.groupby("Period", as_index=False)["Count"].sum()
+        if period_grouped.empty:
+            line_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+                align="center", baseline="middle", fontSize=15
+            ).encode(
+                text=alt.value("No data available")
+            ).properties(width="container").to_dict(format="vega")
+        else:
+            # Set proper order for period data
+            period_order = get_period_order()
+            available_periods = period_grouped["Period"].unique()
+            ordered_periods = [p for p in period_order if p in available_periods]
+            
+            line_chart = alt.Chart(period_grouped).mark_line(point=True).encode(
+                x=alt.X("Period:N", title="Immigration Period", sort=ordered_periods),
+                y=alt.Y("Count:Q", title="Count"),
+                tooltip=["Period", "Count"]
+            ).properties(width="container").to_dict(format="vega")
+    
     elif immigrant_status == "Total":
+        # Show immigration status breakdown for total population
         pie_df = df[
             base &
             (df["variable_type"] == "status") &
@@ -1229,8 +1357,59 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
             (df["ImmigrantStatus"] != "Total")
         ].groupby("ImmigrantStatus", as_index=False)["Count"].sum()
         line_chart = make_pie_chart(pie_df, "ImmigrantStatus")
+    
+    elif immigrant_status == "Non-immigrants":
+        # Show age-gender intersection for non-immigrants
+        age_gender_df = df[
+            base &
+            (df["variable_type"] == "status") &
+            (df["Gender"] != "Total - Gender") &
+            (df["Age"] != "Total - Age") &
+            (df["ImmigrantStatus"] == "Non-immigrants")
+        ]
+        if not age_gender_df.empty:
+            line_chart = alt.Chart(age_gender_df).mark_bar().encode(
+                x=alt.X("Age:N", title="Age Group", sort=get_age_order()),
+                y=alt.Y("Count:Q", title="Count"),
+                color=alt.Color("Gender:N", sort=get_gender_order()),
+                tooltip=["Age", "Gender", "Count"]
+            ).properties(width="container").to_dict(format="vega")
+        else:
+            line_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+                align="center", baseline="middle", fontSize=15
+            ).encode(
+                text=alt.value("No data available")
+            ).properties(width="container").to_dict(format="vega")
+    
+    elif immigrant_status == "Non-permanent residents":
+        # Show age-gender intersection for non-permanent residents
+        age_gender_df = df[
+            base &
+            (df["variable_type"] == "status") &
+            (df["Gender"] != "Total - Gender") &
+            (df["Age"] != "Total - Age") &
+            (df["ImmigrantStatus"] == "Non-permanent residents")
+        ]
+        if not age_gender_df.empty:
+            line_chart = alt.Chart(age_gender_df).mark_bar().encode(
+                x=alt.X("Age:N", title="Age Group", sort=get_age_order()),
+                y=alt.Y("Count:Q", title="Count"),
+                color=alt.Color("Gender:N", sort=get_gender_order()),
+                tooltip=["Age", "Gender", "Count"]
+            ).properties(width="container").to_dict(format="vega")
+        else:
+            line_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+                align="center", baseline="middle", fontSize=15
+            ).encode(
+                text=alt.value("No data available")
+            ).properties(width="container").to_dict(format="vega")
+    
     else:
-        line_chart = make_line_chart(pd.DataFrame(), None)
+        line_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("No data available")
+        ).properties(width="container").to_dict(format="vega")
 
     return gender_chart, age_chart, line_chart
 
@@ -1294,6 +1473,36 @@ def update_intersection_title(dguid, country, admin_level):
     region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
 
     return f"Demographic Breakdown: {country} → {region_name}"
+
+@callback(
+    Output("canada-chart-title", "children"),
+    Output("world-chart-title", "children"),
+    Output("intersection-chart-title", "children"),
+    Input("immigrant-status", "value")
+)
+def update_chart_titles(immigrant_status):
+    if immigrant_status == "Immigrants":
+        canada_title = "Timeline"
+        world_title = "Timeline"
+        intersection_title = "Timeline"
+    elif immigrant_status == "Total":
+        canada_title = "Status Breakdown"
+        world_title = "Status Distribution"
+        intersection_title = "Status Breakdown"
+    elif immigrant_status == "Non-immigrants":
+        canada_title = "Gender Distribution"
+        world_title = "Gender Distribution"
+        intersection_title = "Age-Gender Matrix"
+    elif immigrant_status == "Non-permanent residents":
+        canada_title = "Age Distribution"
+        world_title = "Age Distribution"
+        intersection_title = "Age-Gender Matrix"
+    else:
+        canada_title = "Analysis"
+        world_title = "Analysis"
+        intersection_title = "Analysis"
+    
+    return canada_title, world_title, intersection_title
 
 
 
