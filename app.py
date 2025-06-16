@@ -240,7 +240,7 @@ continent_gdf["geometry"] = continent_gdf["geometry"].buffer(0)
 
 # === World Style Function ===
 classes = [0, 0.1, 0.5, 1, 2, 5, 10]
-colorscale = ['#FFEDA0', '#FED976', '#FEB24C', '#FD8D3C', '#FC4E2A', '#BD0026', '#800026']
+colorscale = ['#f7fcf0', '#e0f3db', '#ccebc5', '#a8ddb5', '#7bccc4', '#4eb3d3', '#2b8cbe', '#08589e']
 
 style_handle = assign("""function(feature, context){
     const {classes, colorscale, style, colorProp} = context.hideout;
@@ -252,14 +252,19 @@ style_handle = assign("""function(feature, context){
     }
     return style;
 }""")
-style = dict(weight=1, opacity=1, color='white', dashArray='3', fillOpacity=0.5)
+style = dict(weight=2, opacity=1, color='white', dashArray='', fillOpacity=0.8)
 ctg = [
-    "{}+".format(
-        cls,
-    )
-    for i, cls in enumerate(classes[:-1])
-] + ["{}+".format(classes[-1])]
-colorbar = dlx.categorical_colorbar(categories=ctg, colorscale=colorscale, width=300, height=30, position="bottomleft")
+    "{}%".format(cls) if cls > 0 else "0%" 
+    for cls in classes[:-1]
+] + ["{}%+".format(classes[-1])]
+colorbar = dlx.categorical_colorbar(
+    categories=ctg, 
+    colorscale=colorscale, 
+    width=350, 
+    height=40, 
+    position="bottomright",
+    style={'background': 'rgba(255,255,255,0.9)', 'padding': '10px', 'borderRadius': '8px', 'boxShadow': '0 2px 10px rgba(0,0,0,0.2)'}
+)
 
 
 # === Function to Build World GeoJSON from Selection ===
@@ -337,152 +342,338 @@ csd_geojson = get_canada_geojson(None)
 indent = "\u00A0\u00A0\u00A0"
 
 # === App Layout ===
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], prevent_initial_callbacks=True)
 cache = Cache(app.server, config={
     'CACHE_TYPE': 'filesystem',
     'CACHE_DIR': 'cache-dir'
 })
 
+# Custom CSS styles
+custom_styles = {
+    'dashboard-header': {
+        'background': 'linear-gradient(135deg, #ff0000 0%, #ffffff 50%, #ff0000 100%)',
+        'padding': '20px 0',
+        'marginBottom': '30px',
+        'borderRadius': '10px',
+        'boxShadow': '0 4px 15px rgba(0,0,0,0.1)'
+    },
+    'stat-card': {
+        'background': 'white',
+        'borderRadius': '10px',
+        'padding': '20px',
+        'textAlign': 'center',
+        'boxShadow': '0 2px 10px rgba(0,0,0,0.1)',
+        'border': '1px solid #e0e0e0',
+        'marginBottom': '15px'
+    },
+    'map-card': {
+        'background': 'white',
+        'borderRadius': '15px',
+        'boxShadow': '0 4px 20px rgba(0,0,0,0.1)',
+        'border': '2px solid #f0f0f0',
+        'marginBottom': '20px'
+    },
+    'chart-card': {
+        'background': 'white',
+        'borderRadius': '10px',
+        'boxShadow': '0 2px 15px rgba(0,0,0,0.08)',
+        'border': '1px solid #e8e8e8',
+        'marginBottom': '15px'
+    },
+    'selection-indicator': {
+        'padding': '10px',
+        'backgroundColor': '#e8f4f8',
+        'borderRadius': '8px',
+        'border': '2px solid #0066cc',
+        'marginBottom': '15px'
+    }
+}
+
 app.layout = dbc.Container([
+    # Header Section
+    html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H1([
+                    html.I(className="bi bi-flag me-3", style={'color': '#ff0000'}),
+                    "Canadian Immigration Statistics Dashboard"
+                ], className="text-center text-white mb-2", style={'fontSize': '2.5rem', 'fontWeight': 'bold'}),
+                html.P("Interactive visualization of immigration patterns across Canada | Data from Statistics Canada", 
+                       className="text-center text-white mb-0", style={'fontSize': '1.1rem', 'opacity': '0.9'})
+            ], width=12)
+        ])
+    ], style=custom_styles['dashboard-header']),
+
+    # Summary Statistics Row
     dbc.Row([
         dbc.Col([
-            html.Label("Immigrant status:"),
-            dcc.Dropdown(
-                id="immigrant-status",
-                options=[{"label": s, "value": s} for s in status_options],
-                value="Total",
-                clearable=False,
-                style={"marginBottom": "10px"}
-            )
-        ], width=4),
-    ]),
+            html.Div([
+                html.H3("15.9M", className="text-primary mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.P("Total Population", className="mb-0 text-muted")
+            ], style=custom_styles['stat-card'])
+        ], width=3),
+        dbc.Col([
+            html.Div([
+                html.H3("4.9M", className="text-success mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.P("Immigrants", className="mb-0 text-muted")
+            ], style=custom_styles['stat-card'])
+        ], width=3),
+        dbc.Col([
+            html.Div([
+                html.H3("200+", className="text-info mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.P("Origin Countries", className="mb-0 text-muted")
+            ], style=custom_styles['stat-card'])
+        ], width=3),
+        dbc.Col([
+            html.Div([
+                html.H3("13", className="text-warning mb-1", style={'fontSize': '2rem', 'fontWeight': 'bold'}),
+                html.P("Provinces & Territories", className="mb-0 text-muted")
+            ], style=custom_styles['stat-card'])
+        ], width=3),
+    ], className="mb-4"),
 
+    # Controls Section
     dbc.Row([
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader(html.H4("Canada Map", id="canada-map-title")),
+                dbc.CardBody([
+                    html.Label("Immigration Status Filter:", className="fw-bold mb-2"),
+                    dcc.Dropdown(
+                        id="immigrant-status",
+                        options=[{"label": s, "value": s} for s in status_options],
+                        value="Total",
+                        clearable=False,
+                        style={"marginBottom": "10px"}
+                    )
+                ])
+            ], style=custom_styles['chart-card'])
+        ], width=4),
+        dbc.Col([
+            html.Div([
+                html.H5([
+                    html.I(className="bi bi-info-circle me-2"),
+                    "How to Use This Dashboard"
+                ], className="text-primary mb-2"),
+                html.P([
+                    html.Strong("Step 1: "), "Click any region on the Canada map to see where its immigrants come from worldwide", html.Br(),
+                    html.Strong("Step 2: "), "Click any country on the world map to see where those immigrants settle in Canada", html.Br(),
+                    html.Strong("Step 3: "), "View detailed demographics when both maps have selections"
+                ], className="mb-0 small")
+            ], style={**custom_styles['selection-indicator'], 'fontSize': '0.9rem'})
+        ], width=8)
+    ], className="mb-4"),
+    # Selection Status Indicators
+    dbc.Row([
+        dbc.Col([
+            html.Div(id="selection-status", style=custom_styles['selection-indicator'])
+        ], width=12)
+    ]),
+
+    # Main Maps Section
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader([
+                    html.H4([
+                        html.I(className="bi bi-map me-2", style={'color': '#ff0000'}),
+                        html.Span("Canada Map", id="canada-map-title")
+                    ], className="mb-0 text-dark")
+                ], style={'background': '#f8f9fa', 'borderBottom': '3px solid #ff0000'}),
                 dbc.CardBody([
                     dbc.Row([
                         dbc.Col([
-                            html.Label("Select administrative level:"),
+                            html.Label("Administrative Level:", className="fw-bold mb-2"),
                             dcc.Dropdown(
                                 id="canada-admin-level",
                                 options=[
-                                    {"label": "Census Subdivision (CSD)", "value": "CSD"},
-                                    {"label": "Census Division (CD)", "value": "CD"},
-                                    {"label": "Province", "value": "Province"},
+                                    {"label": "🏘️ Census Subdivision (CSD)", "value": "CSD"},
+                                    {"label": "🏙️ Census Division (CD)", "value": "CD"},
+                                    {"label": "🌍 Province", "value": "Province"},
                                 ],
                                 value="CSD",
                                 clearable=False,
-                                style={"marginBottom": "10px", "width": "100%"}
+                                style={"marginBottom": "15px"}
                             ),
-                        ], width=3),
+                        ], width=8),
                         dbc.Col([
-                            dbc.Button(
-                                "All Canada",
+                            dbc.Button([
+                                html.I(className="bi bi-arrow-clockwise me-2"),
+                                "Reset Selection"
+                            ],
                                 id="reset-dguid-button",
-                                color="primary",
+                                color="outline-primary",
                                 size="sm",
-                                style={"marginTop": "30px", "float": "right"}
+                                className="mt-4 w-100"
                             )
-                        ], width=9),
-                    ], className="mb-2"),
+                        ], width=4),
+                    ]),
 
-                    dl.Map([
-                        dl.TileLayer(),
-                        dl.GeoJSON(
-                            data=csd_geojson,
-                            id="csd-geojson",
-                            zoomToBoundsOnClick=False,
-                            hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
-                            options=dict(style=style_handle),
-                            hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
-                        ),
-                        colorbar
-                    ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '600px'}, id="bc-map"),
+                    html.Div([
+                        dl.Map([
+                            dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"),
+                            dl.GeoJSON(
+                                data=csd_geojson,
+                                id="csd-geojson",
+                                zoomToBoundsOnClick=False,
+                                hoverStyle=arrow_function(dict(weight=5, color='#ff0000', dashArray='')),
+                                options=dict(style=style_handle),
+                                hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
+                            ),
+                            colorbar
+                        ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '600px', 'borderRadius': '10px'}, id="bc-map")
+                    ], style={'border': '2px solid #e0e0e0', 'borderRadius': '10px', 'overflow': 'hidden', 'marginBottom': '20px'}),
 
                     dbc.Row([
-                        dbc.Col([dvc.Vega(id="canada-bar-chart")], width=6),
-                        dbc.Col([dvc.Vega(id="canada-line-chart")], width=6),
+                        dbc.Col([
+                            dbc.Card([
+                                dbc.CardHeader(html.H6("Top Regions", className="mb-0")),
+                                dbc.CardBody([dvc.Vega(id="canada-bar-chart")], style={'padding': '10px'})
+                            ], style=custom_styles['chart-card'])
+                        ], width=6),
+                        dbc.Col([
+                            dbc.Card([
+                                dbc.CardHeader(html.H6("Trends & Distribution", className="mb-0")),
+                                dbc.CardBody([dvc.Vega(id="canada-line-chart")], style={'padding': '10px'})
+                            ], style=custom_styles['chart-card'])
+                        ], width=6),
                     ])
-                ])
-            ])
+                ], style={'padding': '25px'})
+            ], style=custom_styles['map-card'])
         ], width=6),
 
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader(html.H4("Immigrant Origins World Map", id="world-map-title")),
+                dbc.CardHeader([
+                    html.H4([
+                        html.I(className="bi bi-globe-americas me-2", style={'color': '#0066cc'}),
+                        html.Span("World Origins Map", id="world-map-title")
+                    ], className="mb-0 text-dark")
+                ], style={'background': '#f8f9fa', 'borderBottom': '3px solid #0066cc'}),
                 dbc.CardBody([
-                    html.Label("Select administrative level:"),
+                    html.Label("Origin Grouping Level:", className="fw-bold mb-2"),
                     dcc.Dropdown(
                         id="world-admin-level",
                         options=[
-                            {"label": f"World", "value": "Country (including Canada)"},
-                            {"label": f"{indent}Inside Canada", "value": "---", "disabled": True},
-                            {"label": f"{indent*2}Province", "value": "Inside Canada (Provinces)"},
-                            {"label": f"{indent}Outside Canada", "value": "---", "disabled": True},
-                            {"label": f"{indent*2}Continent", "value": "Continent"},
-                            {"label": f"{indent*2}Region", "value": "Region"},
-                            {"label": f"{indent*2}Country (excluding Canada)", "value": "Country (excluding Canada)"}
+                            {"label": f"🌍 Worldwide View", "value": "Country (including Canada)"},
+                            {"label": f"🍁 Inside Canada", "value": "---", "disabled": True},
+                            {"label": f"{indent*2}🏛️ Province", "value": "Inside Canada (Provinces)"},
+                            {"label": f"🌎 Outside Canada", "value": "---", "disabled": True},
+                            {"label": f"{indent*2}🌍 Continent", "value": "Continent"},
+                            {"label": f"{indent*2}🗺️ Region", "value": "Region"},
+                            {"label": f"{indent*2}🏳️ Country", "value": "Country (excluding Canada)"}
                         ],
                         value="Country (including Canada)",
                         clearable=False,
-                        style={"marginBottom": "10px", "width": "300px"}
+                        style={"marginBottom": "15px"}
                     ),
                     
-                    dl.Map([
-                        dl.TileLayer(),
-                        dl.GeoJSON(
-                            data=world_geojson,
-                            id="world-geojson",
-                            zoomToBoundsOnClick=False,
-                            hoverStyle=arrow_function(dict(weight=5, color='#666', dashArray='')),
-                            options=dict(style=style_handle),
-                            hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
-                        ),
-                        colorbar
-                    ], center=[20, 0], zoom=2, style={'width': '100%', 'height': '600px'}, id="world-map"),
+                    html.Div([
+                        dl.Map([
+                            dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"),
+                            dl.GeoJSON(
+                                data=world_geojson,
+                                id="world-geojson",
+                                zoomToBoundsOnClick=False,
+                                hoverStyle=arrow_function(dict(weight=5, color='#0066cc', dashArray='')),
+                                options=dict(style=style_handle),
+                                hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
+                            ),
+                            colorbar
+                        ], center=[20, 0], zoom=2, style={'width': '100%', 'height': '600px', 'borderRadius': '10px'}, id="world-map")
+                    ], style={'border': '2px solid #e0e0e0', 'borderRadius': '10px', 'overflow': 'hidden', 'marginBottom': '20px'}),
+
                     dbc.Row([
-                        dbc.Col([dvc.Vega(id="world-bar-chart")], width=6),
-                        dbc.Col([dvc.Vega(id="world-line-chart")], width=6),
+                        dbc.Col([
+                            dbc.Card([
+                                dbc.CardHeader(html.H6("Top Origins", className="mb-0")),
+                                dbc.CardBody([dvc.Vega(id="world-bar-chart")], style={'padding': '10px'})
+                            ], style=custom_styles['chart-card'])
+                        ], width=6),
+                        dbc.Col([
+                            dbc.Card([
+                                dbc.CardHeader(html.H6("Immigration Patterns", className="mb-0")),
+                                dbc.CardBody([dvc.Vega(id="world-line-chart")], style={'padding': '10px'})
+                            ], style=custom_styles['chart-card'])
+                        ], width=6),
                     ])
-                ])
-            ])
+                ], style={'padding': '25px'})
+            ], style=custom_styles['map-card'])
         ], width=6)
-    ]),
+    ], className="mb-4"),
 
+    # Intersection Analysis Section
+    html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H3([
+                    html.I(className="bi bi-diagram-3 me-3", style={'color': '#6c757d'}),
+                    html.Span(id="intersection-title", className="text-center")
+                ], className="text-center mb-4", style={'color': '#2c3e50', 'fontWeight': 'bold'})
+            ], width=12)
+        ]),
+
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.H5([
+                            html.I(className="bi bi-people me-2", style={'color': '#e74c3c'}),
+                            "Gender Distribution"
+                        ], className="mb-0 text-dark")
+                    ], style={'background': '#f8f9fa', 'borderBottom': '2px solid #e74c3c'}),
+                    dbc.CardBody([
+                        dvc.Vega(id="intersection-gender-chart")
+                    ], style={'padding': '20px'})
+                ], style=custom_styles['chart-card'])
+            ], width=4),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.H5([
+                            html.I(className="bi bi-bar-chart me-2", style={'color': '#f39c12'}),
+                            "Age Groups"
+                        ], className="mb-0 text-dark")
+                    ], style={'background': '#f8f9fa', 'borderBottom': '2px solid #f39c12'}),
+                    dbc.CardBody([
+                        dvc.Vega(id="intersection-age-chart")
+                    ], style={'padding': '20px'})
+                ], style=custom_styles['chart-card'])
+            ], width=4),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.H5([
+                            html.I(className="bi bi-graph-up me-2", style={'color': '#27ae60'}),
+                            "Immigration Timeline"
+                        ], className="mb-0 text-dark")
+                    ], style={'background': '#f8f9fa', 'borderBottom': '2px solid #27ae60'}),
+                    dbc.CardBody([
+                        dvc.Vega(id="intersection-line-chart")
+                    ], style={'padding': '20px'})
+                ], style=custom_styles['chart-card'])
+            ], width=4),
+        ], className="mb-4"),
+    ], style={'background': '#f8f9fa', 'padding': '30px 20px', 'borderRadius': '15px', 'marginTop': '30px'}),
+
+    # Footer
+    html.Hr(style={'margin': '40px 0'}),
     dbc.Row([
         dbc.Col([
-            html.H5(id="intersection-title", className="text-center mb-3")
+            html.P([
+                "Data Source: Statistics Canada - ",
+                html.A("Table 98-10-0307-01", 
+                       href="https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=9810030701", 
+                       target="_blank", className="text-primary"),
+                " | Dashboard created with Dash & Plotly"
+            ], className="text-center text-muted small mb-0")
         ], width=12)
-    ]),
-
-    dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader("Gender Breakdown"),
-                dbc.CardBody([dvc.Vega(id="intersection-gender-chart")])
-            ])
-        ], width=4),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader("Age Breakdown"),
-                dbc.CardBody([dvc.Vega(id="intersection-age-chart")])
-            ])
-        ], width=4),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader("Immigration Period"),
-                dbc.CardBody([dvc.Vega(id="intersection-line-chart")])
-            ])
-        ], width=4),
     ]),
 
     dcc.Store(id="selected-dguid", data=default_dguid),
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="hovered-world-map", data=None),
     dcc.Store(id="hovered-canada-map", data=None),
-], fluid=True)
+], fluid=True, style={'backgroundColor': '#f5f7fa', 'minHeight': '100vh', 'paddingTop': '20px', 'paddingBottom': '40px'})
 
 
 # ========= Callbacks =========
@@ -677,23 +868,26 @@ def update_selected_dguid_combined(clickData, reset_clicks):
     Input("selected-country", "data")
 )
 def update_canada_map_title(admin_level, selected_country):
+    admin_labels = {"CSD": "Census Subdivisions", "CD": "Census Divisions", "Province": "Provinces"}
     if selected_country:
-        return f"Canada {admin_level} Map for Immigrants from {selected_country}"
-    return "Canada Map"
+        return f"Distribution of {selected_country} Immigrants Across {admin_labels[admin_level]}"
+    return f"Canadian {admin_labels[admin_level]} (Click to Select)"
 
 @callback(
     Output("world-map-title", "children"),
     Input("selected-dguid", "data"),
-    Input("csd-geojson", "clickData"),
+    Input("canada-admin-level", "value")
 )
-def update_world_title(selected_dguid, clickData):
+def update_world_title(selected_dguid, admin_level):
     if selected_dguid == "ALL":
-        return "Immigrant Origins for All Canada"
+        return "Immigration Origins: All of Canada"
 
-    if clickData and "properties" in clickData and "NAME" in clickData["properties"]:
-        return f"Immigrant Origins for {clickData['properties']['NAME']}"
-
-    return "Immigrant Origins"
+    gdf_map = {"CSD": gdf_csd, "CD": gdf_cd, "Province": gdf_prov}
+    gdf = gdf_map[admin_level]
+    row = gdf[gdf["DGUID"] == selected_dguid]
+    region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
+    
+    return f"Immigration Origins: {region_name}"
 
 
 @callback(
@@ -857,6 +1051,7 @@ def update_canada_status_chart(selected_country, immigrant_status):
         return make_line_chart(pd.DataFrame(), None)
 
     if immigrant_status == "Immigrants":
+        # Show immigration periods timeline
         df = df_csd_combined[
             (df_csd_combined["Birthplace"] == selected_country) &
             (df_csd_combined["variable_type"] == "period") &
@@ -865,7 +1060,9 @@ def update_canada_status_chart(selected_country, immigrant_status):
         ]
         grouped = df.groupby("Period", as_index=False)["Count"].sum()
         return make_line_chart(grouped, None)
+    
     elif immigrant_status == "Total":
+        # Show immigration status breakdown as pie chart
         df = df_csd_combined[
             (df_csd_combined["Birthplace"] == selected_country) &
             (df_csd_combined["variable_type"] == "status") &
@@ -875,6 +1072,31 @@ def update_canada_status_chart(selected_country, immigrant_status):
         ]
         pie_df = df.groupby("ImmigrantStatus", as_index=False)["Count"].sum()
         return make_pie_chart(pie_df, "ImmigrantStatus")
+    
+    elif immigrant_status == "Non-immigrants":
+        # Show gender breakdown for non-immigrants
+        df = df_csd_combined[
+            (df_csd_combined["Birthplace"] == selected_country) &
+            (df_csd_combined["variable_type"] == "status") &
+            (df_csd_combined["ImmigrantStatus"] == "Non-immigrants") &
+            (df_csd_combined["Gender"] != "Total - Gender") &
+            (df_csd_combined["Age"] == "Total - Age")
+        ]
+        gender_df = df.groupby("Gender", as_index=False)["Count"].sum()
+        return make_pie_chart(gender_df, "Gender")
+    
+    elif immigrant_status == "Non-permanent residents":
+        # Show age group breakdown for non-permanent residents
+        df = df_csd_combined[
+            (df_csd_combined["Birthplace"] == selected_country) &
+            (df_csd_combined["variable_type"] == "status") &
+            (df_csd_combined["ImmigrantStatus"] == "Non-permanent residents") &
+            (df_csd_combined["Gender"] == "Total - Gender") &
+            (df_csd_combined["Age"] != "Total - Age")
+        ]
+        age_df = df.groupby("Age", as_index=False)["Count"].sum()
+        return make_pie_chart(age_df, "Age")
+    
     else:
         return make_line_chart(pd.DataFrame(), None)
 
@@ -1015,6 +1237,43 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
 
 
 @callback(
+    Output("selection-status", "children"),
+    Input("selected-dguid", "data"),
+    Input("selected-country", "data"),
+    Input("canada-admin-level", "value")
+)
+def update_selection_status(dguid, country, admin_level):
+    canada_selection = "All Canada" if dguid == "ALL" else "A Canadian region"
+    country_selection = country if country else "No country selected"
+    
+    if dguid != "ALL":
+        gdf_map = {"CSD": gdf_csd, "CD": gdf_cd, "Province": gdf_prov}
+        gdf = gdf_map[admin_level]
+        row = gdf[gdf["DGUID"] == dguid]
+        canada_selection = row["NAME"].values[0] if not row.empty else "Selected Region"
+    
+    return html.Div([
+        html.H6([
+            html.I(className="bi bi-cursor me-2"),
+            "Current Selections"
+        ], className="text-primary mb-2"),
+        dbc.Row([
+            dbc.Col([
+                html.Div([
+                    html.I(className="bi bi-geo-alt me-2", style={'color': '#ff0000'}),
+                    html.Strong("Canada: "), canada_selection
+                ], className="mb-1")
+            ], width=6),
+            dbc.Col([
+                html.Div([
+                    html.I(className="bi bi-globe me-2", style={'color': '#0066cc'}),
+                    html.Strong("Origin: "), country_selection
+                ], className="mb-1")
+            ], width=6)
+        ])
+    ])
+
+@callback(
     Output("intersection-title", "children"),
     Input("selected-dguid", "data"),
     Input("selected-country", "data"),
@@ -1022,7 +1281,7 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
 )
 def update_intersection_title(dguid, country, admin_level):
     if not country or dguid == "ALL":
-        return "Intersectional Immigration Stats (Select a region and a country)"
+        return "Demographic Analysis (Select both a Canadian region and origin country)"
 
     # Get Canadian region name
     gdf_map = {
@@ -1034,7 +1293,7 @@ def update_intersection_title(dguid, country, admin_level):
     row = gdf[gdf["DGUID"] == dguid]
     region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
 
-    return f"Immigration Stats: {region_name} ← immigrants from {country}"
+    return f"Demographic Breakdown: {country} → {region_name}"
 
 
 
