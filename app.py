@@ -752,6 +752,7 @@ def update_hovered_canada(feature):
     Input("selected-country", "data"),
     Input("canada-admin-level", "value")
 )
+
 def update_canada_geojson(immigrant_status, selected_country, admin_level):
     df_map = {
         "CSD": df_csd_total,
