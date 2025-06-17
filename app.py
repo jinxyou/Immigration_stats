@@ -389,11 +389,11 @@ cache = Cache(app.server, config={
 # Custom CSS styles
 custom_styles = {
     'dashboard-header': {
-        'background': 'linear-gradient(135deg, #ff0000 0%, #ffffff 50%, #ff0000 100%)',
+        'background': 'linear-gradient(90deg, #d32f2f 0%, #c2185b 100%)',
         'padding': '20px 0',
         'marginBottom': '30px',
         'borderRadius': '10px',
-        'boxShadow': '0 4px 15px rgba(0,0,0,0.1)'
+        'boxShadow': '0 4px 15px rgba(0,0,0,0.15)'
     },
     'stat-card': {
         'background': 'white',
@@ -433,10 +433,11 @@ app.layout = dbc.Container([
         dbc.Row([
             dbc.Col([
                 html.H1([
-                    html.I(className="bi bi-flag me-3", style={'color': '#ff0000'}),
-                    "Canadian Immigration Statistics Dashboard"
-                ], className="text-center text-white mb-2", style={'fontSize': '2.5rem', 'fontWeight': 'bold'}),
-                html.P("Interactive visualization of immigration patterns across Canada | Data from Statistics Canada", 
+                    html.I(className="bi bi-maple me-3", style={'color': '#ffffff', 'fontSize': '2.2rem'}),
+                    html.Span("Canada Immigration Insights", style={'fontWeight': '800'}),
+                    html.Small(" • Interactive Dashboard", className="ms-3", style={'fontWeight': '400', 'fontSize': '1.2rem'})
+                ], className="text-center text-white mb-2", style={'fontSize': '2.5rem'}),
+                html.P("Interactive visualization of immigration patterns across Canada | Data reflects the 2021 Canadian Census", 
                        className="text-center text-white mb-0", style={'fontSize': '1.1rem', 'opacity': '0.9'})
             ], width=12)
         ])
@@ -698,11 +699,15 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             html.P([
-                "Data Source: Statistics Canada - ",
+                "Data Source: Statistics Canada – ",
                 html.A("Table 98-10-0307-01", 
-                       href="https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=9810030701", 
-                       target="_blank", className="text-primary"),
-                " | Dashboard created with Dash & Plotly"
+                    href="https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=9810030701", 
+                    target="_blank", className="text-primary"),
+                " | Built by ",
+                html.A("Eugene You", 
+                    href="https://github.com/jinxyou", 
+                    target="_blank", className="text-primary"),
+                " using Dash & Plotly"
             ], className="text-center text-muted small mb-0")
         ], width=12)
     ]),
