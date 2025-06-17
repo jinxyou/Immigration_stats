@@ -379,7 +379,8 @@ csd_geojson = get_canada_geojson(None)
 indent = "\u00A0\u00A0\u00A0"
 
 # === App Layout ===
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], prevent_initial_callbacks=True)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], prevent_initial_callbacks=True,
+               meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'}])
 cache = Cache(app.server, config={
     'CACHE_TYPE': 'filesystem',
     'CACHE_DIR': 'cache-dir'
@@ -557,7 +558,7 @@ app.layout = dbc.Container([
                                 hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
                             ),
                             colorbar
-                        ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '600px', 'borderRadius': '10px'}, id="bc-map")
+                        ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '60vh', 'minHeight': '400px', 'maxHeight': '600px', 'borderRadius': '10px'}, id="bc-map")
                     ], style={'border': '2px solid #e0e0e0', 'borderRadius': '10px', 'overflow': 'hidden', 'marginBottom': '20px'}),
 
                     dbc.Row([
@@ -566,17 +567,17 @@ app.layout = dbc.Container([
                                 dbc.CardHeader(html.H6("Top Regions", className="mb-0")),
                                 dbc.CardBody([dvc.Vega(id="canada-bar-chart")], style={'padding': '10px'})
                             ], style=custom_styles['chart-card'])
-                        ], width=6),
+                        ], width=12, md=6, className="mb-3"),
                         dbc.Col([
                             dbc.Card([
                                 dbc.CardHeader(html.H6(id="canada-chart-title", className="mb-0")),
                                 dbc.CardBody([dvc.Vega(id="canada-line-chart")], style={'padding': '10px'})
                             ], style=custom_styles['chart-card'])
-                        ], width=6),
+                        ], width=12, md=6, className="mb-3"),
                     ])
                 ], style={'padding': '25px'})
             ], style=custom_styles['map-card'])
-        ], width=6),
+        ], width=12, lg=6, className="mb-4"),
 
         dbc.Col([
             dbc.Card([
@@ -616,7 +617,7 @@ app.layout = dbc.Container([
                                 hideout=dict(colorscale=colorscale, classes=classes, style=style, colorProp="Percentage")
                             ),
                             colorbar
-                        ], center=[20, 0], zoom=2, style={'width': '100%', 'height': '600px', 'borderRadius': '10px'}, id="world-map")
+                        ], center=[20, 0], zoom=2, style={'width': '100%', 'height': '60vh', 'minHeight': '400px', 'maxHeight': '600px', 'borderRadius': '10px'}, id="world-map")
                     ], style={'border': '2px solid #e0e0e0', 'borderRadius': '10px', 'overflow': 'hidden', 'marginBottom': '20px'}),
 
                     dbc.Row([
@@ -625,17 +626,17 @@ app.layout = dbc.Container([
                                 dbc.CardHeader(html.H6("Top Origins", className="mb-0")),
                                 dbc.CardBody([dvc.Vega(id="world-bar-chart")], style={'padding': '10px'})
                             ], style=custom_styles['chart-card'])
-                        ], width=6),
+                        ], width=12, md=6, className="mb-3"),
                         dbc.Col([
                             dbc.Card([
                                 dbc.CardHeader(html.H6(id="world-chart-title", className="mb-0")),
                                 dbc.CardBody([dvc.Vega(id="world-line-chart")], style={'padding': '10px'})
                             ], style=custom_styles['chart-card'])
-                        ], width=6),
+                        ], width=12, md=6, className="mb-3"),
                     ])
                 ], style={'padding': '25px'})
             ], style=custom_styles['map-card'])
-        ], width=6)
+        ], width=12, lg=6, className="mb-4")
     ], className="mb-4"),
 
     # Intersection Analysis Section
@@ -662,7 +663,7 @@ app.layout = dbc.Container([
                         dvc.Vega(id="intersection-gender-chart")
                     ], style={'padding': '20px'})
                 ], style=custom_styles['chart-card'])
-            ], width=4),
+            ], width=12, md=6, lg=4, className="mb-3"),
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
@@ -675,7 +676,7 @@ app.layout = dbc.Container([
                         dvc.Vega(id="intersection-age-chart")
                     ], style={'padding': '20px'})
                 ], style=custom_styles['chart-card'])
-            ], width=4),
+            ], width=12, md=6, lg=4, className="mb-3"),
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
@@ -688,7 +689,7 @@ app.layout = dbc.Container([
                         dvc.Vega(id="intersection-line-chart")
                     ], style={'padding': '20px'})
                 ], style=custom_styles['chart-card'])
-            ], width=4),
+            ], width=12, md=12, lg=4, className="mb-3"),
         ], className="mb-4"),
     ], style={'background': '#f8f9fa', 'padding': '30px 20px', 'borderRadius': '15px', 'marginTop': '30px'}),
 
@@ -710,7 +711,13 @@ app.layout = dbc.Container([
     dcc.Store(id="selected-country", data=None),
     dcc.Store(id="hovered-world-map", data=None),
     dcc.Store(id="hovered-canada-map", data=None),
-], fluid=True, style={'backgroundColor': '#f5f7fa', 'minHeight': '100vh', 'paddingTop': '20px', 'paddingBottom': '40px'})
+], fluid=True, style={
+    'backgroundColor': '#f5f7fa', 
+    'minHeight': '100vh', 
+    'paddingTop': '20px', 
+    'paddingBottom': '40px',
+    'overflowX': 'auto'
+})
 
 
 # ========= Callbacks =========
@@ -1047,7 +1054,7 @@ def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hov
 
 # Helper functions for proper ordering
 def get_age_order():
-    return ["0 to 14 years", "15 to 24 years", "25 to 54 years", "55 to 64 years", "65 years and over"]
+    return ["0 to 14 years", "15 to 24 years"]
 
 def get_period_order():
     return ["Before 1980", "1980 to 1990", "1991 to 2000", "2001 to 2010", "2011 to 2021"]
@@ -1106,11 +1113,17 @@ def make_pie_chart(df, label_col):
     else:
         sort_order = None
 
-    return alt.Chart(df).mark_arc(innerRadius=50).encode(
+    return alt.Chart(df).mark_arc().encode(
         theta=alt.Theta(field="Count", type="quantitative"),
-        color=alt.Color(field=label_col, type="nominal", sort=sort_order),
+        color=alt.Color(field=label_col, type="nominal", sort=sort_order, legend=alt.Legend(
+            orient="bottom",
+            titleFontSize=12,
+            labelFontSize=10,
+            symbolSize=60,
+            columns=2 if len(df) <= 4 else 3
+        )),
         tooltip=[label_col, "Count"]
-    ).properties(width="container").to_dict(format="vega")
+    ).properties(width="container", height=250).to_dict(format="vega")
 
 
 @callback(
@@ -1120,7 +1133,11 @@ def make_pie_chart(df, label_col):
 )
 def update_canada_status_chart(selected_country, immigrant_status):
     if not selected_country:
-        return make_line_chart(pd.DataFrame(), None)
+        return alt.Chart(pd.DataFrame({"label": ["No selection"], "count": [1]})).mark_text(
+            align="center", baseline="middle", fontSize=15
+        ).encode(
+            text=alt.value("Click a region in the world map")
+        ).properties(width="container").to_dict(format="vega")
 
     if immigrant_status == "Immigrants":
         # Show immigration periods timeline
@@ -1143,6 +1160,13 @@ def update_canada_status_chart(selected_country, immigrant_status):
             (df_csd_combined["ImmigrantStatus"] != "Total")
         ]
         pie_df = df.groupby("ImmigrantStatus", as_index=False)["Count"].sum()
+        # Debug: Check if we have data
+        if pie_df.empty:
+            return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+                align="center", baseline="middle", fontSize=15
+            ).encode(
+                text=alt.value(f"No status data for {selected_country}")
+            ).properties(width="container").to_dict(format="vega")
         return make_pie_chart(pie_df, "ImmigrantStatus")
     
     elif immigrant_status == "Non-immigrants":
@@ -1166,7 +1190,10 @@ def update_canada_status_chart(selected_country, immigrant_status):
             (df_csd_combined["Gender"] == "Total - Gender") &
             (df_csd_combined["Age"] != "Total - Age")
         ]
-        age_df = df.groupby("Age", as_index=False)["Count"].sum()
+        # Filter out unwanted age groups
+        unwanted_ages = ["15 years and over", "65 to 74 years", "75 years and over", "Total - Age"]
+        df_filtered = df[~df["Age"].isin(unwanted_ages)]
+        age_df = df_filtered.groupby("Age", as_index=False)["Count"].sum()
         return make_pie_chart(age_df, "Age")
     
     else:
@@ -1212,6 +1239,14 @@ def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
             (df_all["ImmigrantStatus"] != "Total")
         ]
         pie_df = df.groupby("ImmigrantStatus", as_index=False)["Count"].sum()
+        # Debug: Check if we have data
+        if pie_df.empty:
+            region_name = "All Canada" if selected_dguid == "ALL" else "Selected region"
+            return alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
+                align="center", baseline="middle", fontSize=15
+            ).encode(
+                text=alt.value(f"No status data for {region_name}")
+            ).properties(width="container").to_dict(format="vega")
         return make_pie_chart(pie_df, "ImmigrantStatus")
 
     elif immigrant_status == "Non-immigrants":
@@ -1239,7 +1274,10 @@ def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
         ]
         if selected_dguid != "ALL":
             df = df[df["DGUID"] == selected_dguid]
-        age_df = df.groupby("Age", as_index=False)["Count"].sum()
+        # Filter out unwanted age groups
+        unwanted_ages = ["15 years and over", "65 to 74 years", "75 years and over", "Total - Age"]
+        df_filtered = df[~df["Age"].isin(unwanted_ages)]
+        age_df = df_filtered.groupby("Age", as_index=False)["Count"].sum()
         return make_pie_chart(age_df, "Age")
 
     else:
@@ -1305,7 +1343,10 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
         (df["Gender"] == "Total - Gender") &
         (df["ImmigrantStatus"] == immigrant_status)
     ]
-    age_grouped = age_df.groupby("Age", as_index=False)["Count"].sum()
+    # Filter out unwanted age groups
+    unwanted_ages = ["15 years and over", "65 to 74 years", "75 years and over", "Total - Age"]
+    age_df_filtered = age_df[~age_df["Age"].isin(unwanted_ages)]
+    age_grouped = age_df_filtered.groupby("Age", as_index=False)["Count"].sum()
     if age_grouped.empty:
         age_chart = alt.Chart(pd.DataFrame({"label": ["No data"], "count": [1]})).mark_text(
             align="center", baseline="middle", fontSize=15
@@ -1367,6 +1408,9 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
             (df["Age"] != "Total - Age") &
             (df["ImmigrantStatus"] == "Non-immigrants")
         ]
+        # Filter out unwanted age groups
+        unwanted_ages = ["15 years and over", "65 to 74 years", "75 years and over", "Total - Age"]
+        age_gender_df = age_gender_df[~age_gender_df["Age"].isin(unwanted_ages)]
         if not age_gender_df.empty:
             line_chart = alt.Chart(age_gender_df).mark_bar().encode(
                 x=alt.X("Age:N", title="Age Group", sort=get_age_order()),
@@ -1390,6 +1434,9 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
             (df["Age"] != "Total - Age") &
             (df["ImmigrantStatus"] == "Non-permanent residents")
         ]
+        # Filter out unwanted age groups
+        unwanted_ages = ["15 years and over", "65 to 74 years", "75 years and over", "Total - Age"]
+        age_gender_df = age_gender_df[~age_gender_df["Age"].isin(unwanted_ages)]
         if not age_gender_df.empty:
             line_chart = alt.Chart(age_gender_df).mark_bar().encode(
                 x=alt.X("Age:N", title="Age Group", sort=get_age_order()),
@@ -1487,7 +1534,7 @@ def update_chart_titles(immigrant_status):
         intersection_title = "Timeline"
     elif immigrant_status == "Total":
         canada_title = "Status Breakdown"
-        world_title = "Status Distribution"
+        world_title = "Status Breakdown"
         intersection_title = "Status Breakdown"
     elif immigrant_status == "Non-immigrants":
         canada_title = "Gender Distribution"
