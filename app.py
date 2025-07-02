@@ -433,6 +433,7 @@ app.layout = dbc.Container([
         dbc.Row([
             dbc.Col([
                 html.H1([
+                    html.Span("🇨🇦", style={'fontSize': '2.2rem', 'marginRight': '15px'}),
                     html.I(className="bi bi-maple me-3", style={'color': '#ffffff', 'fontSize': '2.2rem'}),
                     html.Span("Canada Immigration Insights", style={'fontWeight': '800'}),
                     html.Small(" • Interactive Dashboard", className="ms-3", style={'fontWeight': '400', 'fontSize': '1.2rem'})
