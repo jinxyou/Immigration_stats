@@ -483,6 +483,7 @@ app.layout = dbc.Container([
                         options=[{"label": s, "value": s} for s in status_options],
                         value="Total",
                         clearable=False,
+                        searchable=False,
                         style={"marginBottom": "10px"}
                     )
                 ])
@@ -495,9 +496,17 @@ app.layout = dbc.Container([
                     "How to Use This Dashboard"
                 ], className="text-primary mb-2"),
                 html.P([
-                    html.Strong("Step 1: "), "Click any region on the Canada map to see where its immigrants come from worldwide", html.Br(),
-                    html.Strong("Step 2: "), "Click any country on the world map to see where those immigrants settle in Canada", html.Br(),
-                    html.Strong("Step 3: "), "View detailed demographics when both maps have selections"
+                    html.Strong("How the Dashboard Works:"), html.Br(),
+                    "• The Canada map (left) shows where people from the selected origin (on the right map) live in Canada. By default, it shows people from all over the world.", html.Br(),
+                    "• The World map (right) shows the origins of people living in the selected Canadian region (on the left map). By default, it shows origins for all of Canada.", html.Br(),
+                    "• The detailed breakdown below always shows data for your current selections—either or both maps can be selected.",
+                    html.Br(), html.Br(),
+                    html.Strong("How to Use:"), html.Br(),
+                    "1. Use the 'Immigration Status' and 'Level' dropdowns to filter by status or geographic detail.", html.Br(),
+                    "2. Click a region on the Canada map to update the origin distribution on the right.", html.Br(),
+                    "3. Click a country or region on the World map to update the Canadian distribution on the left.", html.Br(),
+                    "4. The detailed breakdown below updates for any combination of selections.", html.Br(),
+                    "5. Reset returns the view to all of Canada and all origins worldwide.",
                 ], className="mb-0 small")
             ], style={**custom_styles['selection-indicator'], 'fontSize': '0.9rem'})
         ], width=8)
@@ -521,33 +530,35 @@ app.layout = dbc.Container([
                 ], style={'background': '#f8f9fa', 'borderBottom': '3px solid #ff0000'}),
                 dbc.CardBody([
                     dbc.Row([
-                        dbc.Col([
-                            html.Label("Administrative Level:", className="fw-bold mb-2"),
+                        dbc.Col(
+                            html.Label("Level:", className="fw-bold mb-0", style={"whiteSpace": "nowrap"}),
+                            width="auto", style={"display": "flex", "alignItems": "center"}
+                        ),
+                        dbc.Col(
                             dcc.Dropdown(
                                 id="canada-admin-level",
                                 options=[
-                                    {"label": "🏘️ Census Subdivision (CSD)", "value": "CSD"},
-                                    {"label": "🏙️ Census Division (CD)", "value": "CD"},
-                                    {"label": "🌍 Province", "value": "Province"},
+                                    {"label": "Census Subdivision (CSD)", "value": "CSD"},
+                                    {"label": "Census Division (CD)", "value": "CD"},
+                                    {"label": "Province", "value": "Province"},
                                 ],
                                 value="CSD",
                                 clearable=False,
-                                style={"marginBottom": "15px"}
+                                searchable=False,
                             ),
-                        ], width=8),
-                        dbc.Col([
-                            dbc.Button([
-                                html.I(className="bi bi-arrow-clockwise me-2"),
-                                "Reset Selection"
-                            ],
+                            width=6, style={"minWidth": 0}
+                        ),
+                        dbc.Col(
+                            dbc.Button(
+                                [html.I(className="bi bi-arrow-clockwise me-2"), "Reset Selection"],
                                 id="reset-dguid-button",
                                 color="outline-primary",
                                 size="sm",
-                                className="mt-4 w-100"
-                            )
-                        ], width=4),
-                    ]),
-
+                                className="w-100"
+                            ),
+                            width=4, style={"display": "flex", "alignItems": "center"}
+                        ),
+                    ], className="mb-3", align="center"),
                     html.Div([
                         dl.Map([
                             dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"),
@@ -562,7 +573,6 @@ app.layout = dbc.Container([
                             colorbar
                         ], center=[54.5, -126], zoom=5, style={'width': '100%', 'height': '60vh', 'minHeight': '400px', 'maxHeight': '600px', 'borderRadius': '10px'}, id="bc-map")
                     ], style={'border': '2px solid #e0e0e0', 'borderRadius': '10px', 'overflow': 'hidden', 'marginBottom': '20px'}),
-
                     dbc.Row([
                         dbc.Col([
                             dbc.Card([
@@ -590,23 +600,40 @@ app.layout = dbc.Container([
                     ], className="mb-0 text-dark")
                 ], style={'background': '#f8f9fa', 'borderBottom': '3px solid #0066cc'}),
                 dbc.CardBody([
-                    html.Label("Origin Grouping Level:", className="fw-bold mb-2"),
-                    dcc.Dropdown(
-                        id="world-admin-level",
-                        options=[
-                            {"label": f"🌍 Worldwide View", "value": "Country (including Canada)"},
-                            {"label": f"🍁 Inside Canada", "value": "---", "disabled": True},
-                            {"label": f"{indent*2}🏛️ Province", "value": "Inside Canada (Provinces)"},
-                            {"label": f"🌎 Outside Canada", "value": "---", "disabled": True},
-                            {"label": f"{indent*2}🌍 Continent", "value": "Continent"},
-                            {"label": f"{indent*2}🗺️ Region", "value": "Region"},
-                            {"label": f"{indent*2}🏳️ Country", "value": "Country (excluding Canada)"}
-                        ],
-                        value="Country (including Canada)",
-                        clearable=False,
-                        style={"marginBottom": "15px"}
-                    ),
-                    
+                    dbc.Row([
+                        dbc.Col(
+                            html.Label("Level:", className="fw-bold mb-0", style={"whiteSpace": "nowrap"}),
+                            width="auto", style={"display": "flex", "alignItems": "center"}
+                        ),
+                        dbc.Col(
+                            dcc.Dropdown(
+                                id="world-admin-level",
+                                options=[
+                                    {"label": "Worldwide View", "value": "Country (including Canada)"},
+                                    {"label": "Inside Canada", "value": "---", "disabled": True},
+                                    {"label": f"{indent}Province", "value": "Inside Canada (Provinces)"},
+                                    {"label": "Outside Canada", "value": "---", "disabled": True},
+                                    {"label": f"{indent}Continent", "value": "Continent"},
+                                    {"label": f"{indent}Region", "value": "Region"},
+                                    {"label": f"{indent}Country", "value": "Country (excluding Canada)"}
+                                ],
+                                value="Country (including Canada)",
+                                clearable=False,
+                                searchable=False,
+                            ),
+                            width=6, style={"minWidth": 0}
+                        ),
+                        dbc.Col(
+                            dbc.Button(
+                                [html.I(className="bi bi-arrow-clockwise me-2"), "Reset Origin"],
+                                id="reset-country-button",
+                                color="outline-primary",
+                                size="sm",
+                                className="w-100"
+                            ),
+                            width=4, style={"display": "flex", "alignItems": "center"}
+                        ),
+                    ], className="mb-3", align="center"),
                     html.Div([
                         dl.Map([
                             dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"),
@@ -621,7 +648,6 @@ app.layout = dbc.Container([
                             colorbar
                         ], center=[20, 0], zoom=2, style={'width': '100%', 'height': '60vh', 'minHeight': '400px', 'maxHeight': '600px', 'borderRadius': '10px'}, id="world-map")
                     ], style={'border': '2px solid #e0e0e0', 'borderRadius': '10px', 'overflow': 'hidden', 'marginBottom': '20px'}),
-
                     dbc.Row([
                         dbc.Col([
                             dbc.Card([
@@ -771,9 +797,23 @@ def update_canada_geojson(immigrant_status, selected_country, admin_level):
     gdf = gdf_map[admin_level].copy()
 
     if not selected_country:
-        # Just show the names in the tooltip
-        gdf["tooltip"] = gdf["NAME"]
-        return json.loads(gdf.to_json())
+        # Show 'Total – Place of birth' data by default (whole world)
+        df_total = df[df["Birthplace"] == "Total – Place of birth"].groupby("DGUID", as_index=False)["Count"].sum()
+        df_total.rename(columns={"Count": "TotalCount"}, inplace=True)
+        # For the default, just use the total as both numerator and denominator (100%)
+        df_total["Percentage"] = 100.0
+        merged = gdf.merge(df_total, on="DGUID", how="left")
+        merged["Percentage"] = merged["Percentage"].fillna(0)
+        merged["tooltip"] = merged.apply(
+            lambda row: (
+                f"{row['NAME']}:<br>"
+                f"{int(row['TotalCount'])} people (all places of birth)<br>"
+                f"100% of the {immigrant_status} population of {int(row['TotalCount'])}"
+                if pd.notna(row['TotalCount']) else f"{row['NAME']}"
+            ),
+            axis=1
+        )
+        return json.loads(merged.to_json())
 
     df_total = df[df["Birthplace"] == "Total – Place of birth"].groupby("DGUID", as_index=False)["Count"].sum()
     df_total.rename(columns={"Count": "TotalCount"}, inplace=True)
@@ -884,16 +924,6 @@ def update_world_geojson(immigrant_status, selected_dguid, world_admin_level, ca
 
 
 
-@callback(
-    Output("selected-country", "data"),
-    Input("world-geojson", "clickData"),
-)
-def update_selected_country(feature):
-    if not feature:
-        return None
-    return feature["properties"].get("ADMIN")
-
-
 
 @callback(
     Output("selected-dguid", "data"),
@@ -912,33 +942,54 @@ def update_selected_dguid_combined(clickData, reset_clicks):
 
     return dash.no_update
 
+@callback(
+    Output("selected-country", "data"),
+    Input("world-geojson", "clickData"),
+    Input("reset-country-button", "n_clicks")
+)
+def update_selected_country_combined(feature, reset_clicks):
+    triggered_id = ctx.triggered_id
 
+    if triggered_id == "reset-country-button":
+        return None
+
+    if feature:
+        return feature["properties"].get("ADMIN")
+
+    return dash.no_update
+
+
+def update_canada_map_title(admin_level, selected_country, immigrant_status):
+    status_label = immigrant_status if immigrant_status != "Total" else "Total Population"
+    origin = selected_country if selected_country else "All Origins"
+    return f"Distribution of {status_label} from {origin}"
+
+# Update the callback signature to include immigrant_status
 @callback(
     Output("canada-map-title", "children"),
     Input("canada-admin-level", "value"),
-    Input("selected-country", "data")
+    Input("selected-country", "data"),
+    Input("immigrant-status", "value")
 )
-def update_canada_map_title(admin_level, selected_country):
-    admin_labels = {"CSD": "Census Subdivisions", "CD": "Census Divisions", "Province": "Provinces"}
-    if selected_country:
-        return f"Distribution of {selected_country} Immigrants Across {admin_labels[admin_level]}"
-    return f"Canadian {admin_labels[admin_level]} (Click to Select)"
+def update_canada_map_title_callback(admin_level, selected_country, immigrant_status):
+    return update_canada_map_title(admin_level, selected_country, immigrant_status)
 
 @callback(
     Output("world-map-title", "children"),
     Input("selected-dguid", "data"),
-    Input("canada-admin-level", "value")
+    Input("canada-admin-level", "value"),
+    Input("immigrant-status", "value")
 )
-def update_world_title(selected_dguid, admin_level):
+def update_world_title(selected_dguid, admin_level, immigrant_status):
+    status_label = immigrant_status if immigrant_status != "Total" else "Total Population"
     if selected_dguid == "ALL":
-        return "Immigration Origins: All of Canada"
-
-    gdf_map = {"CSD": gdf_csd, "CD": gdf_cd, "Province": gdf_prov}
-    gdf = gdf_map[admin_level]
-    row = gdf[gdf["DGUID"] == selected_dguid]
-    region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
-    
-    return f"Immigration Origins: {region_name}"
+        region_name = "All Canada"
+    else:
+        gdf_map = {"CSD": gdf_csd, "CD": gdf_cd, "Province": gdf_prov}
+        gdf = gdf_map[admin_level]
+        row = gdf[gdf["DGUID"] == selected_dguid]
+        region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
+    return f"Origins of {status_label} in {region_name}"
 
 
 @callback(
@@ -1004,13 +1055,6 @@ def update_world_bar_chart(immigrant_status, selected_dguid, grouping_level, hov
     Input("hovered-canada-map", "data"),
 )
 def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hovered_label):
-    if not selected_country:
-        return alt.Chart(pd.DataFrame({"label": ["No selection"], "count": [1]})).mark_text(
-            align="center", baseline="middle", fontSize=15
-        ).encode(
-            text=alt.value("Click a region in the world map")
-        ).properties(width="container").to_dict(format="vega")
-
     df_map = {
         "CSD": df_csd_total,
         "CD": df_cd_total,
@@ -1018,8 +1062,12 @@ def update_canada_bar_chart(immigrant_status, selected_country, admin_level, hov
     }
     df_country = df_map[admin_level]
     df_country = df_country[df_country["ImmigrantStatus"] == immigrant_status]
-    df_country = df_country[df_country["Birthplace"] == selected_country].copy()
-
+    
+    if not selected_country:
+        # Show 'Total – Place of birth' data by default (whole world)
+        df_country = df_country[df_country["Birthplace"] == "Total – Place of birth"].copy()
+    else:
+        df_country = df_country[df_country["Birthplace"] == selected_country].copy()
 
     if admin_level in ["CSD", "CD"]:
         merge_df = gdf_csd[["DGUID", "NAME"]] if admin_level == "CSD" else gdf_cd[["DGUID", "NAME"]]
@@ -1140,11 +1188,8 @@ def make_pie_chart(df, label_col):
 )
 def update_canada_status_chart(selected_country, immigrant_status):
     if not selected_country:
-        return alt.Chart(pd.DataFrame({"label": ["No selection"], "count": [1]})).mark_text(
-            align="center", baseline="middle", fontSize=15
-        ).encode(
-            text=alt.value("Click a region in the world map")
-        ).properties(width="container").to_dict(format="vega")
+        # Show 'Total – Place of birth' data by default (whole world)
+        selected_country = "Total – Place of birth"
 
     if immigrant_status == "Immigrants":
         # Show immigration periods timeline
@@ -1303,23 +1348,24 @@ def update_world_line_chart(selected_dguid, admin_level, immigrant_status):
     Input("immigrant-status", "value")
 )
 def update_intersection_charts(selected_dguid, selected_country, admin_level, immigrant_status):
-    if not selected_country or selected_dguid == "ALL":
-        return tuple([alt.Chart(pd.DataFrame({"label": ["No data"], "count": [0]}))
-            .mark_bar().encode(x="label:N", y="count:Q")
-            .properties(title="No data").to_dict(format="vega")] * 3)
-
-    # Pick correct DataFrame
     df = {
         "CSD": df_csd_combined,
         "CD": df_cd_combined,
         "Province": df_prov_combined
     }[admin_level]
 
-    # Base filter for intersection
-    base = (
-        (df["DGUID"] == selected_dguid) &
-        (df["Birthplace"] == selected_country)
-    )
+    # Case 1: Both default (show all Canada, all origins)
+    if selected_dguid == "ALL" and not selected_country:
+        base = (df["Birthplace"] == "Total – Place of birth")
+    # Case 2: Only region selected (country is default)
+    elif selected_dguid != "ALL" and not selected_country:
+        base = (df["DGUID"] == selected_dguid) & (df["Birthplace"] == "Total – Place of birth")
+    # Case 3: Only country selected (region is ALL)
+    elif selected_dguid == "ALL" and selected_country:
+        base = (df["Birthplace"] == selected_country)
+    # Case 4: Both selected
+    else:
+        base = (df["DGUID"] == selected_dguid) & (df["Birthplace"] == selected_country)
 
     # Gender Bar Chart
     gender_df = df[
@@ -1477,14 +1523,12 @@ def update_intersection_charts(selected_dguid, selected_country, admin_level, im
 )
 def update_selection_status(dguid, country, admin_level):
     canada_selection = "All Canada" if dguid == "ALL" else "A Canadian region"
-    country_selection = country if country else "No country selected"
-    
+    country_selection = country if country else "All Origins"
     if dguid != "ALL":
         gdf_map = {"CSD": gdf_csd, "CD": gdf_cd, "Province": gdf_prov}
         gdf = gdf_map[admin_level]
         row = gdf[gdf["DGUID"] == dguid]
         canada_selection = row["NAME"].values[0] if not row.empty else "Selected Region"
-    
     return html.Div([
         html.H6([
             html.I(className="bi bi-cursor me-2"),
@@ -1513,32 +1557,38 @@ def update_selection_status(dguid, country, admin_level):
     Input("canada-admin-level", "value")
 )
 def update_intersection_title(dguid, country, admin_level):
-    if not country or dguid == "ALL":
-        return "Demographic Analysis (Select both a Canadian region and origin country)"
-
-    # Get Canadian region name
-    gdf_map = {
-        "CSD": gdf_csd,
-        "CD": gdf_cd,
-        "Province": gdf_prov
-    }
-    gdf = gdf_map[admin_level]
-    row = gdf[gdf["DGUID"] == dguid]
-    region_name = row["NAME"].values[0] if not row.empty else "Selected Region"
-
-    return f"Demographic Breakdown: {country} → {region_name}"
+    # Determine origin label
+    origin_label = country if country else "All Origins"
+    # Determine region label
+    if dguid == "ALL":
+        region_label = "All Canada"
+    else:
+        gdf_map = {
+            "CSD": gdf_csd,
+            "CD": gdf_cd,
+            "Province": gdf_prov
+        }
+        gdf = gdf_map[admin_level]
+        row = gdf[gdf["DGUID"] == dguid]
+        region_label = row["NAME"].values[0] if not row.empty else "Selected Region"
+    return f"Demographic Breakdown: {origin_label} → {region_label}"
 
 @callback(
     Output("canada-chart-title", "children"),
     Output("world-chart-title", "children"),
     Output("intersection-chart-title", "children"),
-    Input("immigrant-status", "value")
+    Input("immigrant-status", "value"),
+    Input("selected-country", "data")
 )
-def update_chart_titles(immigrant_status):
+def update_chart_titles(immigrant_status, selected_country):
     if immigrant_status == "Immigrants":
         canada_title = "Timeline"
         world_title = "Timeline"
         intersection_title = "Timeline"
+    elif not selected_country:
+        canada_title = "Top Regions (All Origins)"
+        world_title = "Top Origins"
+        intersection_title = "Demographic Breakdown"
     elif immigrant_status == "Total":
         canada_title = "Status Breakdown"
         world_title = "Status Breakdown"
@@ -1555,7 +1605,6 @@ def update_chart_titles(immigrant_status):
         canada_title = "Analysis"
         world_title = "Analysis"
         intersection_title = "Analysis"
-    
     return canada_title, world_title, intersection_title
 
 
@@ -1568,5 +1617,5 @@ def update_chart_titles(immigrant_status):
 
 # === Run App ===
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8050)
+    app.run(host='0.0.0.0', port=8050, debug=True)
 
