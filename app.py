@@ -379,7 +379,7 @@ csd_geojson = get_canada_geojson(None)
 indent = "\u00A0\u00A0\u00A0"
 
 # === App Layout ===
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], prevent_initial_callbacks=True,
+app = dash.Dash(__name__, title='ImmigrationStats.ca – Canada Immigration Dashboard', external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], prevent_initial_callbacks=True,
                meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'}])
 cache = Cache(app.server, config={
     'CACHE_TYPE': 'filesystem',
@@ -507,6 +507,11 @@ app.layout = dbc.Container([
                     "3. Click a country or region on the World map to update the Canadian distribution on the left.", html.Br(),
                     "4. The detailed breakdown below updates for any combination of selections.", html.Br(),
                     "5. Reset returns the view to all of Canada and all origins worldwide.",
+                    html.Br(), html.Br(),
+                    html.Strong("Start with some simple ones:"), html.Br(),
+                    "• Wanna see the distribution of people's origin in Vancouver? Click Vancouver on the left map and check results on the right map.", html.Br(),
+                    "• Wanna see how many Chinese immigrants in each canadian cities? Click China on the right map and check results on the left map."
+
                 ], className="mb-0 small")
             ], style={**custom_styles['selection-indicator'], 'fontSize': '0.9rem'})
         ], width=8)
@@ -666,6 +671,15 @@ app.layout = dbc.Container([
             ], style=custom_styles['map-card'])
         ], width=12, lg=6, className="mb-4")
     ], className="mb-4"),
+
+    dbc.Row([
+    dbc.Col([
+            html.Div([
+                html.P([
+                    html.Strong("Click on both maps to check intersectional data below:")
+                ], className="mb-0 small")
+            ], style={**custom_styles['selection-indicator'], 'fontSize': '0.9rem'})
+        ], width=4)]),
 
     # Intersection Analysis Section
     html.Div([
@@ -1617,5 +1631,5 @@ def update_chart_titles(immigrant_status, selected_country):
 
 # === Run App ===
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8050)
+    app.run(host='0.0.0.0', port=8050, debug=False)
 
